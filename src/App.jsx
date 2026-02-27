@@ -426,20 +426,14 @@ export default function App() {
             </div>
           ) : playingGame.url ? (
             <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
-              <iframe
-                src={playingGame.url}
-                className="w-full h-full border-none outline-none overflow-hidden"
-                style={{
-                  overflow: "hidden",
-                  width: "100%",
-                  height: "100%",
-                  display: "block",
-                }}
-                scrolling="no"
-                title={playingGame.title}
-                allow="microphone; camera; clipboard-write; fullscreen"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
-              />
+              // YENİ KOD
+<iframe
+  src={playingGame.url}
+  className="w-full h-full border-none outline-none"
+  style={{ width: "100%", height: "100%", display: "block" }}
+  title={playingGame.title}
+  allow="microphone; camera; clipboard-write; fullscreen"
+/>
             </div>
           ) : (
             <div className="text-center space-y-4 p-6">
