@@ -67,9 +67,20 @@ const isFirebaseConfigured = firebaseConfig.apiKey !== "BURAYA_GELECEK";
    Kendi e-postanı buraya ekleyebilirsin.
    ========================================================================= */
 const ADMIN_EMAILS = [
-  "carkci.caner@gmail.com",
-  "forgeandplay@gmail.com" // <-- Buraya kendi mailini yaz!
+  "forgeandplay@gmail.com",
+  "carkci.caner@gmail.com" // <-- Buraya kendi mailini yaz!
 ];
+
+/* =========================================================================
+   💳 ÖDEME LİNKLERİ (Shopify, Shopier, Iyzico vb.)
+   Hangi platformu kullanırsan kullan, ilgili paket için oluşturduğun 
+   ödeme veya ürün linkini buraya yapıştır.
+   ========================================================================= */
+const PAYMENT_LINKS = {
+  "1A": "https://www.shopier.com/ShowProductNew/products.php?id=ORNEK_AYLIK",
+  "6A": "https://senin-magazan.myshopify.com/cart/add?id=ORNEK_6AYLIK",
+  "1Y": "https://iyzi.link/ORNEK_YILLIK"
+};
 
 let app, auth, db, googleProvider;
 if (isFirebaseConfigured) {
@@ -662,10 +673,24 @@ export default function App() {
      FIREBASE: SATIN ALMA TALEBİ (PRICING)
   ---------------------------------------------- */
   const handlePurchaseRequest = async (plan) => {
-    alert("Shopier ödeme sayfasına yönlendiriliyorsunuz... Ödeme tamamlandığında sistem yönetici onayına düşecektir.");
-    if (currentUser) {
-      await updateDoc(doc(db, "users", currentUser.id), { pendingRequest: plan });
+    if (!currentUser) {
+      setShowPricingModal(false);
+      setShowLoginModal(true);
+      return;
     }
+    
+    // Veritabanına kullanıcının ödeme aşamasına geçtiğini kaydet (Beklemeye al)
+    await updateDoc(doc(db, "users", currentUser.id), { pendingRequest: plan });
+
+    // Linki alıp yönlendir
+    const paymentUrl = PAYMENT_LINKS[plan];
+    if (paymentUrl) {
+      // Ödeme sayfasını yeni bir sekmede açar
+      window.open(paymentUrl, "_blank");
+    } else {
+      alert("Bu plan için ödeme linki henüz tanımlanmadı.");
+    }
+    
     setShowPricingModal(false);
   };
 
