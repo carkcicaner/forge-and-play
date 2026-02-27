@@ -82,6 +82,8 @@ const PAYMENT_LINKS = {
   "1Y": "https://iyzi.link/ORNEK_YILLIK"
 };
 
+const LOGO_URL = "https://i.ibb.co/HppdF5nY/freepik-minimal-futuristic-gaming-logo-forge-hammer-combin-64278.png";
+
 let app, auth, db, googleProvider;
 if (isFirebaseConfigured) {
   app = initializeApp(firebaseConfig);
@@ -133,7 +135,7 @@ const GAMES = [
     description: "Yasaklı kelimeleri kullanmadan takım arkadaşlarına gizli kelimeyi anlatmaya çalış. Süre dolmadan en çok kelimeyi bilen takım kazanır!",
     price: "Geliştiriliyor",
     players: "Yakında",
-    gradient: "from-purple-900 via-fuchsia-950 to-black",
+    gradient: "from-orange-900 via-rose-950 to-black",
     iconKey: "message",
     url: null,
     image: "https://images.unsplash.com/photo-1543269664-7eef42226a21?auto=format&fit=crop&q=80&w=800",
@@ -163,7 +165,7 @@ const GAMES = [
     description: "İnternetin derinliklerinden gelen garip bilgiler... Gerçek mi yoksa tamamen uydurma mı? Rakiplerini blöf yaparak kandır veya doğruyu bilerek puanları topla!",
     price: "Geliştiriliyor",
     players: "Yakında",
-    gradient: "from-orange-900 via-amber-950 to-black",
+    gradient: "from-amber-900 via-orange-950 to-black",
     iconKey: "help",
     url: null,
     image: "https://images.unsplash.com/photo-1518133835878-5a93ac3f000c?auto=format&fit=crop&q=80&w=800",
@@ -178,7 +180,7 @@ const LAB_PROJECTS = [
     progress: 45,
     status: "Geliştiriliyor",
     description: "Yapay zekanın oyun yöneticisi olduğu, sınırsız senaryoya sahip RPG deneyimi.",
-    gradient: "from-indigo-900 to-slate-900",
+    gradient: "from-orange-900 to-slate-900",
   },
   {
     id: "life-path",
@@ -190,7 +192,7 @@ const LAB_PROJECTS = [
   },
 ];
 
-const focusStyles = "focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950";
+const focusStyles = "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-500 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950";
 
 /* ---------------------------------------------
    ICON MAP
@@ -199,9 +201,9 @@ function GameIcon({ iconKey, className }) {
   const cls = className || "w-10 h-10 md:w-12 md:h-12";
   switch (iconKey) {
     case "wallet": return <Wallet className={`${cls} text-emerald-500`} />;
-    case "message": return <MessageCircle className={`${cls} text-purple-500`} />;
+    case "message": return <MessageCircle className={`${cls} text-orange-500`} />;
     case "film": return <Film className={`${cls} text-blue-500`} />;
-    case "help": return <HelpCircle className={`${cls} text-orange-500`} />;
+    case "help": return <HelpCircle className={`${cls} text-amber-500`} />;
     case "user": default: return <User className={`${cls} text-red-500`} />;
   }
 }
@@ -407,8 +409,8 @@ export default function App() {
       <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in zoom-in-95 duration-300" style={{ height: "calc(var(--vh, 1vh) * 100)" }}>
         <div className="flex items-center justify-between px-4 md:px-6 py-2 md:py-3 bg-slate-950 border-b border-slate-800 shadow-xl">
           <div className="flex items-center gap-2 md:gap-3 text-white font-bold truncate">
-            <div className="hidden sm:block bg-gradient-to-br from-indigo-500 to-purple-600 p-1.5 rounded-md">
-              <Gamepad2 className="w-4 h-4 text-white" />
+            <div className="hidden sm:flex bg-slate-900 p-1.5 rounded-md border border-slate-800">
+              <img src={LOGO_URL} alt="Logo" className="w-5 h-5 object-contain" />
             </div>
             <span className="hidden sm:inline">Forge&Play</span>
             <span className="hidden sm:inline text-slate-600 select-none">|</span>
@@ -435,7 +437,7 @@ export default function App() {
               <h2 className="text-2xl font-bold text-white">Premium İçerik</h2>
               <p className="text-slate-400"><b>{playingGame.title}</b> içeriğini kullanabilmek için aktif aboneliğiniz olmalıdır.</p>
               <div className="pt-4 space-y-3">
-                <button onClick={() => setShowPricingModal(true)} className={`flex items-center justify-center gap-2 w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 font-bold transition-colors ${focusStyles}`}>
+                <button onClick={() => setShowPricingModal(true)} className={`flex items-center justify-center gap-2 w-full px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-500 font-bold transition-colors ${focusStyles}`}>
                   <Sparkles className="w-5 h-5" /> Abonelik Planlarını Gör
                 </button>
                 <button onClick={() => setPlayingGame(null)} className={`w-full px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}>
@@ -476,11 +478,11 @@ export default function App() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 lg:h-20 flex items-center justify-between gap-4">
         <div className="flex items-center gap-6 lg:gap-10">
           <button className={`flex items-center gap-2.5 cursor-pointer rounded-lg py-1 ${focusStyles} shrink-0`} onClick={() => setActiveTab("store")}>
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 lg:p-2.5 rounded-xl shadow-lg shadow-indigo-500/20">
-              <Gamepad2 className="w-5 h-5 lg:w-6 lg:h-6 text-white" />
+            <div className="bg-slate-900 border border-slate-800 p-1.5 lg:p-2 rounded-xl shadow-lg shadow-orange-500/10 flex items-center justify-center">
+              <img src={LOGO_URL} alt="Forge&Play Logo" className="w-6 h-6 lg:w-7 lg:h-7 object-contain" />
             </div>
             <div className="text-xl lg:text-2xl font-black tracking-tight text-white hidden sm:block">
-              Forge<span className="text-indigo-500">&</span>Play
+              Forge<span className="text-orange-500">&</span>Play
             </div>
           </button>
           <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
@@ -503,7 +505,7 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3 md:gap-5 shrink-0">
-          <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-indigo-500 transition-colors">
+          <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-orange-500 transition-colors">
             <Search className="w-4 h-4 text-slate-400" />
             <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Oyun ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-32 lg:w-48 placeholder-slate-500" />
           </div>
@@ -512,7 +514,7 @@ export default function App() {
           </button>
 
           {authLoading ? (
-             <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+             <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           ) : currentUser ? (
             <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
               <div className="hidden sm:flex flex-col items-end justify-center h-full">
@@ -529,7 +531,7 @@ export default function App() {
                   <span className="text-[10px] font-bold tracking-wide uppercase text-slate-500">Standart</span>
                 )}
               </div>
-              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-indigo-500 transition-all ${!isUserPremium(currentUser) && currentUser.role !== "admin" ? "animate-pulse" : ""}`} onClick={() => !isUserPremium(currentUser) && currentUser.role !== "admin" && setShowPricingModal(true)}>
+              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && currentUser.role !== "admin" ? "animate-pulse" : ""}`} onClick={() => !isUserPremium(currentUser) && currentUser.role !== "admin" && setShowPricingModal(true)}>
                 {currentUser.name?.charAt(0)?.toUpperCase()}
               </div>
               <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
@@ -537,7 +539,7 @@ export default function App() {
               </button>
             </div>
           ) : (
-            <button onClick={() => setShowLoginModal(true)} className={`flex items-center justify-center gap-2 px-4 py-2 md:px-5 md:py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 ${focusStyles} shrink-0`}>
+            <button onClick={() => setShowLoginModal(true)} className={`flex items-center justify-center gap-2 px-4 py-2 md:px-5 md:py-2.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-orange-500/20 ${focusStyles} shrink-0`}>
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Giriş Yap / Kayıt Ol</span>
               <span className="sm:hidden">Giriş</span>
@@ -556,7 +558,7 @@ export default function App() {
           { id: "library", icon: Library, label: "Kütüphane" },
           { id: "feedback", icon: Lightbulb, label: "Fikirler" },
         ].map(tab => (
-           <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? "text-indigo-400" : "text-slate-500 hover:text-slate-300"}`}>
+           <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? "text-orange-500" : "text-slate-500 hover:text-slate-300"}`}>
             <tab.icon className="w-6 h-6 mb-1" />
             <span className="text-[10px] font-bold">{tab.label}</span>
           </button>
@@ -616,8 +618,8 @@ export default function App() {
         </button>
 
         <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/20">
-            <Gamepad2 className="w-8 h-8 text-white" />
+          <div className="w-20 h-20 bg-slate-950 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-800 shadow-lg shadow-orange-500/20 p-2">
+            <img src={LOGO_URL} alt="Forge&Play Logo" className="w-full h-full object-contain" />
           </div>
           <h2 className="text-2xl font-black text-white">{isRegistering ? "Aramıza Katıl" : "Hesabına Giriş Yap"}</h2>
           <p className="text-slate-400 text-sm mt-2">Tüm Forge&Play kütüphanene erişmek için giriş yap.</p>
@@ -632,13 +634,13 @@ export default function App() {
         <form onSubmit={handleLoginSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">E-Posta Adresi</label>
-            <input type="email" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} placeholder="ornek@gmail.com" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-colors" />
+            <input type="email" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} placeholder="ornek@gmail.com" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Şifre</label>
-            <input type="password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-colors" />
+            <input type="password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
           </div>
-          <button type="submit" className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-indigo-500/20 mt-2">
+          <button type="submit" className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-orange-500/20 mt-2">
             {isRegistering ? "Kayıt Ol ve Başla" : "Giriş Yap"}
           </button>
         </form>
@@ -661,7 +663,7 @@ export default function App() {
 
         <p className="text-center text-sm text-slate-400">
           {isRegistering ? "Zaten hesabın var mı?" : "Henüz hesabın yok mu?"}{" "}
-          <button onClick={() => setIsRegistering(!isRegistering)} className="text-indigo-400 font-bold hover:text-indigo-300 transition-colors" type="button">
+          <button onClick={() => setIsRegistering(!isRegistering)} className="text-orange-500 font-bold hover:text-orange-400 transition-colors" type="button">
             {isRegistering ? "Giriş Yap" : "Hemen Kayıt Ol"}
           </button>
         </p>
@@ -708,7 +710,7 @@ export default function App() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
           {/* Paket 1: 1 Ay */}
-          <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 md:p-8 flex flex-col hover:border-indigo-500/30 transition-all relative">
+          <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 md:p-8 flex flex-col hover:border-orange-500/30 transition-all relative">
             <h3 className="text-xl font-bold text-white mb-2">Aylık Bilet</h3>
             <p className="text-slate-500 text-sm mb-6 h-10">Kısa süreli deneme ve tek bir oyun gecesi için ideal.</p>
             <div className="mb-6 flex items-baseline gap-1">
@@ -722,19 +724,19 @@ export default function App() {
           </div>
 
           {/* Paket 2: 6 Ay */}
-          <div className="bg-gradient-to-b from-indigo-900/50 to-slate-950 border-2 border-indigo-500 rounded-3xl p-6 md:p-8 flex flex-col transform lg:-translate-y-4 shadow-2xl shadow-indigo-500/20 relative">
-            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-indigo-500 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-lg">EN POPÜLER</div>
+          <div className="bg-gradient-to-b from-orange-900/40 to-slate-950 border-2 border-orange-500 rounded-3xl p-6 md:p-8 flex flex-col transform lg:-translate-y-4 shadow-2xl shadow-orange-500/20 relative">
+            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-orange-500 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-lg">EN POPÜLER</div>
             <h3 className="text-2xl font-bold text-white mb-2">Sezonluk Kart</h3>
-            <p className="text-indigo-200/60 text-sm mb-6 h-10">Düzenli oyuncular için harika bir tasarruf fırsatı.</p>
+            <p className="text-orange-200/60 text-sm mb-6 h-10">Düzenli oyuncular için harika bir tasarruf fırsatı.</p>
             <div className="mb-2 flex items-baseline gap-2">
               <span className="text-4xl font-black text-white">179₺</span><span className="text-slate-400 text-sm line-through">234₺</span>
             </div>
-            <div className="text-indigo-400 text-sm mb-6 font-bold flex items-center gap-1"><Sparkles className="w-4 h-4" /> %23 İndirim (Aylık 29.8₺)</div>
+            <div className="text-orange-400 text-sm mb-6 font-bold flex items-center gap-1"><Sparkles className="w-4 h-4" /> %23 İndirim (Aylık 29.8₺)</div>
             <ul className="space-y-4 mb-8 flex-1">
-              <li className="flex gap-3 text-sm text-slate-200 items-start"><CheckCircle2 className="w-5 h-5 text-indigo-400 shrink-0" /><span className="pt-0.5">Tüm Premium özellikler</span></li>
-              <li className="flex gap-3 text-sm text-slate-200 items-start"><CheckCircle2 className="w-5 h-5 text-indigo-400 shrink-0" /><span className="pt-0.5">Özel rozet</span></li>
+              <li className="flex gap-3 text-sm text-slate-200 items-start"><CheckCircle2 className="w-5 h-5 text-orange-400 shrink-0" /><span className="pt-0.5">Tüm Premium özellikler</span></li>
+              <li className="flex gap-3 text-sm text-slate-200 items-start"><CheckCircle2 className="w-5 h-5 text-orange-400 shrink-0" /><span className="pt-0.5">Özel rozet</span></li>
             </ul>
-            <button onClick={() => handlePurchaseRequest("6A")} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl transition-all shadow-lg shadow-indigo-600/30 transform hover:scale-[1.02]">6 Ay İçin Satın Al</button>
+            <button onClick={() => handlePurchaseRequest("6A")} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl transition-all shadow-lg shadow-orange-600/30 transform hover:scale-[1.02]">6 Ay İçin Satın Al</button>
           </div>
 
           {/* Paket 3: 12 Ay */}
@@ -754,7 +756,7 @@ export default function App() {
         </div>
 
         {!currentUser && (
-          <div className="mt-8 text-center text-sm text-slate-400">Satın almak için önce <button className="text-indigo-400 font-bold hover:text-indigo-300" onClick={() => { setShowPricingModal(false); setShowLoginModal(true); }}>giriş yap</button>.</div>
+          <div className="mt-8 text-center text-sm text-slate-400">Satın almak için önce <button className="text-orange-500 font-bold hover:text-orange-400" onClick={() => { setShowPricingModal(false); setShowLoginModal(true); }}>giriş yap</button>.</div>
         )}
       </div>
     </div>
@@ -787,10 +789,10 @@ export default function App() {
 
   const renderFeedback = () => (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      <div className="bg-gradient-to-r from-indigo-900/40 to-slate-900 border border-indigo-900/50 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center gap-8">
+      <div className="bg-gradient-to-r from-orange-900/30 to-slate-900 border border-orange-900/50 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center gap-8">
         <div className="flex-1 space-y-4">
           <div className="flex items-center gap-3">
-            <Lightbulb className="w-8 h-8 md:w-10 md:h-10 text-indigo-400" />
+            <Lightbulb className="w-8 h-8 md:w-10 md:h-10 text-orange-500" />
             <h2 className="text-2xl md:text-4xl font-black text-white">Oyuncuların Sesi</h2>
           </div>
           <p className="text-sm md:text-base text-slate-300 leading-relaxed max-w-2xl">
@@ -799,19 +801,19 @@ export default function App() {
         </div>
 
         <div className="w-full md:w-[400px] bg-slate-950 rounded-xl p-5 md:p-6 border border-slate-800 shadow-2xl shrink-0">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><MessageSquarePlus className="w-5 h-5 text-indigo-400" /> Bir Fikir Gönder</h3>
+          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><MessageSquarePlus className="w-5 h-5 text-orange-500" /> Bir Fikir Gönder</h3>
           <form onSubmit={handleFeedbackSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hangi Oyun İçin?</label>
-              <select value={newFeedbackGame} onChange={(e) => setNewFeedbackGame(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500">
+              <select value={newFeedbackGame} onChange={(e) => setNewFeedbackGame(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500">
                 {GAMES.map((g) => <option key={g.id} value={g.title}>{g.title}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fikriniz Nedir?</label>
-              <textarea required rows="3" value={newFeedbackText} onChange={(e) => setNewFeedbackText(e.target.value)} placeholder="Örn: Şu özellik gelirse çok iyi olur..." className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500 resize-none" />
+              <textarea required rows="3" value={newFeedbackText} onChange={(e) => setNewFeedbackText(e.target.value)} placeholder="Örn: Şu özellik gelirse çok iyi olur..." className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 resize-none" />
             </div>
-            <button type="submit" className={`w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-colors ${focusStyles}`}>
+            <button type="submit" className={`w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-lg transition-colors ${focusStyles}`}>
               <Send className="w-4 h-4" /> Gönder
             </button>
           </form>
@@ -825,7 +827,7 @@ export default function App() {
             <div key={fb.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 md:p-6 flex flex-col h-full hover:border-slate-700 transition-colors">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <div className="text-xs font-bold text-indigo-400 mb-1">{fb.game}</div>
+                  <div className="text-xs font-bold text-orange-500 mb-1">{fb.game}</div>
                   <div className="text-sm font-semibold text-white flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-slate-500" /> {fb.user}
                   </div>
@@ -938,7 +940,7 @@ export default function App() {
                                 <button onClick={() => revokePremium(user.id)} className={`text-[10px] md:text-xs font-bold px-2 py-1.5 rounded-lg transition-colors bg-red-500/10 text-red-400 hover:bg-red-500/20 ${focusStyles}`} title="Aboneliği İptal Et"><ShieldAlert className="w-3 h-3 md:w-4 md:h-4" /></button>
                               ) : null}
                               <button onClick={() => approvePremiumTime(user.id, "1A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors ${focusStyles}`} title="1 Ay Manuel Ekle">+1A</button>
-                              <button onClick={() => approvePremiumTime(user.id, "6A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-indigo-900/50 hover:bg-indigo-800/50 text-indigo-300 transition-colors ${focusStyles}`} title="6 Ay Manuel Ekle">+6A</button>
+                              <button onClick={() => approvePremiumTime(user.id, "6A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-orange-900/50 hover:bg-orange-800/50 text-orange-300 transition-colors ${focusStyles}`} title="6 Ay Manuel Ekle">+6A</button>
                               <button onClick={() => approvePremiumTime(user.id, "1Y")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-amber-900/50 hover:bg-amber-800/50 text-amber-300 transition-colors ${focusStyles}`} title="1 Yıl Manuel Ekle">+1Y</button>
                             </>
                           )}
@@ -988,12 +990,12 @@ export default function App() {
                     <div className="w-full lg:max-w-2xl space-y-4 md:space-y-5">
                       <div className="flex flex-wrap gap-2">
                         <span className={`${currentSlide === idx ? "animate-pulse" : ""} bg-red-500/20 text-red-400 border border-red-500/30 text-xs md:text-sm font-bold px-3 py-1 rounded-full backdrop-blur-sm`}>Öne Çıkan</span>
-                        {game.requiresPremium && <span className="bg-indigo-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
+                        {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
                       </div>
                       <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{game.title}</h1>
                       <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{game.description}</p>
                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
-                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-indigo-600 hover:bg-indigo-500 text-white" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); if (game.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); return; } openGame(game); }}>
+                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); if (game.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); return; } openGame(game); }}>
                           <Play className="w-5 h-5 fill-current" />
                           {game.requiresPremium && !isUserPremium(currentUser) ? "Premium Al" : game.id === "monopoly-bank" ? "Sistemi Başlat" : "Hemen Oyna"}
                         </button>
@@ -1007,7 +1009,7 @@ export default function App() {
               ))}
               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
                 {slideList.map((_, idx) => (
-                  <button key={idx} onClick={(e) => { e.stopPropagation(); setCurrentSlide(idx); }} className={`h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? "w-8 bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.8)]" : "w-2 bg-slate-500/50 hover:bg-slate-400"}`} />
+                  <button key={idx} onClick={(e) => { e.stopPropagation(); setCurrentSlide(idx); }} className={`h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? "w-8 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]" : "w-2 bg-slate-500/50 hover:bg-slate-400"}`} />
                 ))}
               </div>
             </>
@@ -1016,7 +1018,7 @@ export default function App() {
 
         <section>
           <div className="flex items-center justify-between mb-4 md:mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><Sparkles className="w-5 h-5 md:w-6 md:h-6 text-indigo-500" /> Platform Projeleri</h2>
+            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><Sparkles className="w-5 h-5 md:w-6 md:h-6 text-orange-500" /> Platform Projeleri</h2>
             <div className="md:hidden flex items-center bg-slate-900/60 border border-slate-800 rounded-full px-3 py-2">
               <Search className="w-4 h-4 text-slate-500" />
               <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-40" />
@@ -1027,13 +1029,13 @@ export default function App() {
             {filteredGames.map((game) => {
               const locked = game.requiresPremium && !isUserPremium(currentUser);
               return (
-                <div key={game.id} tabIndex={0} onClick={() => { if (locked && game.url) { setShowPricingModal(true); return; } openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-indigo-500/50 transition-all group hover:shadow-[0_0_30px_rgba(99,102,241,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
+                <div key={game.id} tabIndex={0} onClick={() => { if (locked && game.url) { setShowPricingModal(true); return; } openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-orange-500/50 transition-all group hover:shadow-[0_0_30px_rgba(249,115,22,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
                   <div className={`h-32 md:h-40 bg-gradient-to-br ${game.gradient} p-4 md:p-6 flex flex-col justify-between relative overflow-hidden`}>
                     {game.image && <img src={game.image} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay group-hover:opacity-60 transition-all transform group-hover:scale-110 duration-500 z-0 pointer-events-none" />}
                     <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity transform group-hover:scale-110 duration-500 z-10"><GameIcon iconKey={game.iconKey} className="w-12 h-12" /></div>
                     <div className="flex justify-between items-start z-10 relative">
                       <span className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded-full ${game.type === "live" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-sm" : "bg-amber-500/20 text-amber-400 border border-amber-500/30 backdrop-blur-sm"}`}>{game.status}</span>
-                      {game.requiresPremium && <span className="bg-indigo-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
+                      {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
                     </div>
                     <h3 className="text-xl md:text-2xl font-bold text-white z-10 drop-shadow-md relative">{game.title}</h3>
                   </div>
@@ -1044,7 +1046,7 @@ export default function App() {
                         <span className="text-[10px] md:text-xs text-slate-500 mb-0.5">{game.players}</span>
                         <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
                       </div>
-                      <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-indigo-600 hover:bg-indigo-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
+                      <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
                         {game.url ? (locked ? "Premium Al" : "Oyna") : "İncele"}
                       </button>
                     </div>
@@ -1065,14 +1067,14 @@ export default function App() {
     <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
       <div className="w-full lg:w-1/3 xl:w-1/4 space-y-4">
         <div className="flex items-center gap-2 mb-6 text-white font-bold text-xl px-2">
-          <Library className="w-6 h-6 text-indigo-400" /> Kütüphanem
+          <Library className="w-6 h-6 text-orange-500" /> Kütüphanem
         </div>
         <div className="space-y-2">
           {GAMES.filter(g => g.status === "Yayında").map(game => (
             <button
               key={game.id}
               onClick={() => setSelectedLibraryGame(game)}
-              className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${selectedLibraryGame?.id === game.id ? "bg-indigo-600/20 border border-indigo-500/50 text-white" : "bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800"}`}
+              className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${selectedLibraryGame?.id === game.id ? "bg-orange-600/20 border border-orange-500/50 text-white" : "bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800"}`}
             >
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br ${game.gradient}`}>
                 <GameIcon iconKey={game.iconKey} className="w-5 h-5 text-white" />
@@ -1103,7 +1105,7 @@ export default function App() {
                   } else {
                     openGame(selectedLibraryGame);
                   }
-                }} className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2">
+                }} className="w-full sm:w-auto px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
                   <Play className="w-5 h-5" /> 
                   {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
                 </button>
@@ -1123,7 +1125,7 @@ export default function App() {
   const renderLab = () => (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
       <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 md:p-10 text-center relative overflow-hidden">
-        <FlaskConical className="w-16 h-16 text-indigo-500 mx-auto mb-6 opacity-80" />
+        <FlaskConical className="w-16 h-16 text-orange-500 mx-auto mb-6 opacity-80" />
         <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Geliştirme Laboratuvarı</h2>
         <p className="text-slate-400 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
           Burada geleceğin oyunlarını ve AI deneyimlerini tasarlıyoruz. Geliştirme aşamasındaki projelerimize göz at ve ilerlemeyi takip et.
@@ -1146,7 +1148,7 @@ export default function App() {
                 <span>%{proj.progress}</span>
               </div>
               <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
-                <div className="bg-indigo-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
+                <div className="bg-orange-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
               </div>
             </div>
           </div>
@@ -1156,7 +1158,7 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-indigo-500/30 flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col">
       {renderNavbar()}
       {showLoginModal && renderLoginModal()}
       {showPricingModal && renderPricingModal()}
@@ -1169,8 +1171,9 @@ export default function App() {
       </main>
       <footer className="hidden md:block border-t border-slate-800 bg-slate-950 py-12 mt-auto">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between text-slate-500 text-sm">
-          <div className="flex items-center gap-2 mb-4 md:mb-0 font-bold">
-            <Gamepad2 className="w-5 h-5 text-indigo-500" /><span>© 2026 Forge&Play. Tüm hakları saklıdır.</span>
+          <div className="flex items-center gap-3 mb-4 md:mb-0 font-bold">
+            <img src={LOGO_URL} alt="Forge&Play" className="w-6 h-6 object-contain" />
+            <span>© 2026 Forge&Play. Tüm hakları saklıdır.</span>
           </div>
         </div>
       </footer>
