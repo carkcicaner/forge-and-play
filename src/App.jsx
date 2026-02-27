@@ -67,7 +67,7 @@ const isFirebaseConfigured = firebaseConfig.apiKey !== "BURAYA_GELECEK";
    Kendi e-postanı buraya ekleyebilirsin.
    ========================================================================= */
 const ADMIN_EMAILS = [
-  "admin@forgeandplay.com",
+  "carkci.caner@gmail.com",
   "forgeandplay@gmail.com" // <-- Buraya kendi mailini yaz!
 ];
 
