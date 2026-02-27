@@ -61,6 +61,16 @@ const firebaseConfig = {
 // Config kontrolü (Eğer değiştirilmemişse uyarı ekranı göstermek için)
 const isFirebaseConfigured = firebaseConfig.apiKey !== "BURAYA_GELECEK";
 
+/* =========================================================================
+   👑 ADMİN E-POSTA TANIMLAMALARI
+   Buraya yazdığın e-posta adresleri sisteme girdikleri an yönetici olurlar.
+   Kendi e-postanı buraya ekleyebilirsin.
+   ========================================================================= */
+const ADMIN_EMAILS = [
+  "admin@forgeandplay.com",
+  "forgeandplay@gmail.com" // <-- Buraya kendi mailini yaz!
+];
+
 let app, auth, db, googleProvider;
 if (isFirebaseConfigured) {
   app = initializeApp(firebaseConfig);
@@ -232,8 +242,24 @@ export default function App() {
 
   const featuredGames = useMemo(() => GAMES.filter((g) => g.status === "Yayında"), []);
 
+  const filteredGames = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return GAMES;
+    return GAMES.filter((g) => {
+      const hay = `${g.title} ${g.description} ${g.tags.join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [searchQuery]);
+
+  const sortedUsers = useMemo(() => {
+    const list = [...usersList].sort((a, b) => (b.pendingRequest ? 1 : 0) - (a.pendingRequest ? 1 : 0));
+    const q = adminSearch.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+  }, [usersList, adminSearch]);
+
   /* ---------------------------------------------
-     FIREBASE: KULLANICI (AUTH) DİNLEYİCİSİ
+     FIREBASE: KULLANICI (AUTH) DİNLEYİCİSİ VE OTOMATİK ADMİN ATAMASI
   ---------------------------------------------- */
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -241,16 +267,28 @@ export default function App() {
         // Kullanıcı giriş yaptı, veritabanından bilgilerini çekelim
         const userRef = doc(db, "users", firebaseUser.uid);
         const unsubUser = onSnapshot(userRef, (docSnap) => {
+          const isAdminEmail = ADMIN_EMAILS.includes(firebaseUser.email);
+
           if (docSnap.exists()) {
-            setCurrentUser({ id: firebaseUser.uid, ...docSnap.data() });
+            const userData = docSnap.data();
+            
+            // Eğer kullanıcı önceden standart olarak kayıt olduysa ama sonradan 
+            // mailli ADMIN_EMAILS listesine eklendiyse, onu otomatik Admin yap!
+            if (isAdminEmail && userData.role !== "admin") {
+              updateDoc(userRef, { 
+                role: "admin", 
+                premiumEndDate: new Date("2099-01-01").toISOString() 
+              });
+            }
+            
+            setCurrentUser({ id: firebaseUser.uid, ...userData });
           } else {
             // İlk kez giren kullanıcıysa veritabanında kaydını oluştur
-            const isFirstAdmin = firebaseUser.email === "admin@aiarcade.com" || firebaseUser.email === "admin@forgeandplay.com"; 
             const newUser = {
               name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
               email: firebaseUser.email,
-              role: isFirstAdmin ? "admin" : "user", // Admin maili ise yetki ver
-              premiumEndDate: isFirstAdmin ? new Date("2099-01-01").toISOString() : null,
+              role: isAdminEmail ? "admin" : "user", // Admin maili ise yetki ver
+              premiumEndDate: isAdminEmail ? new Date("2099-01-01").toISOString() : null,
               pendingRequest: null
             };
             setDoc(userRef, newUser);
@@ -292,7 +330,6 @@ export default function App() {
       unsubUsers();
     };
   }, [currentUser?.role]);
-
 
   /* ---------------------------------------------
      Helpers
@@ -810,13 +847,6 @@ export default function App() {
       await updateDoc(doc(db, "users", userId), { premiumEndDate: null, pendingRequest: null });
     };
 
-    const sortedUsers = useMemo(() => {
-      const list = [...usersList].sort((a, b) => (b.pendingRequest ? 1 : 0) - (a.pendingRequest ? 1 : 0));
-      const q = adminSearch.trim().toLowerCase();
-      if (!q) return list;
-      return list.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
-    }, [usersList, adminSearch]);
-
     return (
       <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -904,15 +934,6 @@ export default function App() {
   /* ---------------------------------------------
      STORE EKRANI
   ---------------------------------------------- */
-  const filteredGames = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return GAMES;
-    return GAMES.filter((g) => {
-      const hay = `${g.title} ${g.description} ${g.tags.join(" ")}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [searchQuery]);
-
   const renderStore = () => {
     const slideList = featuredGames;
     return (
@@ -1011,6 +1032,103 @@ export default function App() {
       </div>
     );
   };
+
+  /* ---------------------------------------------
+     EKSİK OLAN KÜTÜPHANE VE LABORATUVAR EKRANLARI EKLENDİ
+  ---------------------------------------------- */
+  const renderLibrary = () => (
+    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
+      <div className="w-full lg:w-1/3 xl:w-1/4 space-y-4">
+        <div className="flex items-center gap-2 mb-6 text-white font-bold text-xl px-2">
+          <Library className="w-6 h-6 text-indigo-400" /> Kütüphanem
+        </div>
+        <div className="space-y-2">
+          {GAMES.filter(g => g.status === "Yayında").map(game => (
+            <button
+              key={game.id}
+              onClick={() => setSelectedLibraryGame(game)}
+              className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${selectedLibraryGame?.id === game.id ? "bg-indigo-600/20 border border-indigo-500/50 text-white" : "bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800"}`}
+            >
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br ${game.gradient}`}>
+                <GameIcon iconKey={game.iconKey} className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-semibold text-sm truncate">{game.title}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden flex flex-col min-h-[400px]">
+        {selectedLibraryGame ? (
+          <>
+            <div className={`absolute top-0 left-0 w-full h-48 bg-gradient-to-br ${selectedLibraryGame.gradient} opacity-20`} />
+            <div className="relative z-10 flex-1 flex flex-col">
+              <div className="flex items-start justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{selectedLibraryGame.title}</h2>
+                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed">{selectedLibraryGame.description}</p>
+                </div>
+                <div className={`hidden md:flex w-20 h-20 rounded-2xl items-center justify-center shrink-0 bg-gradient-to-br ${selectedLibraryGame.gradient} shadow-xl`}>
+                  <GameIcon iconKey={selectedLibraryGame.iconKey} className="w-10 h-10 text-white" />
+                </div>
+              </div>
+              <div className="mt-auto pt-8 border-t border-slate-800">
+                <button onClick={() => {
+                  if (selectedLibraryGame.requiresPremium && !isUserPremium(currentUser)) {
+                    setShowPricingModal(true);
+                  } else {
+                    openGame(selectedLibraryGame);
+                  }
+                }} className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2">
+                  <Play className="w-5 h-5" /> 
+                  {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+           <div className="flex flex-col items-center justify-center text-slate-500 h-full flex-1">
+             <Library className="w-12 h-12 mb-4 opacity-50" />
+             <p>Oynamak için sol taraftan bir oyun seçin</p>
+           </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderLab = () => (
+    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
+      <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 md:p-10 text-center relative overflow-hidden">
+        <FlaskConical className="w-16 h-16 text-indigo-500 mx-auto mb-6 opacity-80" />
+        <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Geliştirme Laboratuvarı</h2>
+        <p className="text-slate-400 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
+          Burada geleceğin oyunlarını ve AI deneyimlerini tasarlıyoruz. Geliştirme aşamasındaki projelerimize göz at ve ilerlemeyi takip et.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {LAB_PROJECTS.map(proj => (
+          <div key={proj.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 flex flex-col hover:border-slate-700 transition-all group">
+            <div className="flex justify-between items-start mb-6">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${proj.gradient}`}>
+                <FlaskConical className="w-6 h-6 text-white opacity-80" />
+              </div>
+              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{proj.status}</span>
+            </div>
+            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{proj.title}</h3>
+            <p className="text-slate-400 text-sm mb-8 flex-1">{proj.description}</p>
+            <div>
+              <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
+                <span>Tamamlanma</span>
+                <span>%{proj.progress}</span>
+              </div>
+              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div className="bg-indigo-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-indigo-500/30 flex flex-col">
