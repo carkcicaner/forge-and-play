@@ -77,9 +77,9 @@ const ADMIN_EMAILS = [
    ödeme veya ürün linkini buraya yapıştır.
    ========================================================================= */
 const PAYMENT_LINKS = {
-  "1A": "https://www.shopier.com/ShowProductNew/products.php?id=ORNEK_AYLIK",
-  "6A": "https://senin-magazan.myshopify.com/cart/add?id=ORNEK_6AYLIK",
-  "1Y": "https://iyzi.link/ORNEK_YILLIK"
+  "1A": "https://www.shopier.com/forgeandplay/44689059",
+  "6A": "https://www.shopier.com/forgeandplay/44689160",
+  "1Y": "https://www.shopier.com/forgeandplay/44689235"
 };
 
 const LOGO_URL = "https://i.ibb.co/HppdF5nY/freepik-minimal-futuristic-gaming-logo-forge-hammer-combin-64278.png";
@@ -140,6 +140,21 @@ const GAMES = [
     url: "https://tabu-game-three.vercel.app/", // Link Eklendi
     image: "https://images.unsplash.com/photo-1543269664-7eef42226a21?auto=format&fit=crop&q=80&w=800",
     requiresPremium: true, // Premium yapıldı
+  },
+  {
+    id: "pis-yedili",
+    title: "Pis 7'li",
+    status: "Yayında",
+    type: "live",
+    tags: ["Kart Oyunu", "Klasik", "Çok Oyunculu"],
+    description: "Klasik kart oyunu Pis 7'li şimdi dijitalde! Arkadaşlarınla toplan ve Forge&Play tarafından sunulan bu rekabetçi kart oyununda hünerlerini sergile.",
+    price: "Ücretsiz Oyna",
+    players: "Yeni Eklendi",
+    gradient: "from-fuchsia-900 via-purple-950 to-black",
+    iconKey: "user",
+    url: "https://pis7li-oyunu.vercel.app/",
+    image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=800",
+    requiresPremium: false,
   },
   {
     id: "sessiz-sinema",
