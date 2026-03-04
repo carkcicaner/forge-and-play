@@ -77,9 +77,9 @@ const ADMIN_EMAILS = [
    ödeme veya ürün linkini buraya yapıştır.
    ========================================================================= */
 const PAYMENT_LINKS = {
-  "1A": "https://www.shopier.com/forgeandplay/44689059",
-  "6A": "https://www.shopier.com/forgeandplay/44689160",
-  "1Y": "https://www.shopier.com/forgeandplay/44689235"
+  "1A": "https://www.shopier.com/ShowProductNew/products.php?id=ORNEK_AYLIK",
+  "6A": "https://senin-magazan.myshopify.com/cart/add?id=ORNEK_6AYLIK",
+  "1Y": "https://iyzi.link/ORNEK_YILLIK"
 };
 
 const LOGO_URL = "https://i.ibb.co/HppdF5nY/freepik-minimal-futuristic-gaming-logo-forge-hammer-combin-64278.png";
@@ -420,6 +420,14 @@ export default function App() {
   if (playingGame) {
     const isLockedPremium = playingGame.requiresPremium && !isUserPremium(currentUser);
 
+    // Güvenlik Parametresi: Oyun URL'sinin sonuna gizli bir anahtar ekliyoruz.
+    // Oyun tarafında bu anahtarı kontrol edeceğiz.
+    const getSecureGameUrl = (baseurl) => {
+      if (!baseurl) return "";
+      const separator = baseurl.includes("?") ? "&" : "?";
+      return `${baseurl}${separator}source=forgeandplay_secure_access`;
+    };
+
     return (
       <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in zoom-in-95 duration-300" style={{ height: "calc(var(--vh, 1vh) * 100)" }}>
         <div className="flex items-center justify-between px-4 md:px-6 py-2 md:py-3 bg-slate-950 border-b border-slate-800 shadow-xl">
@@ -434,11 +442,7 @@ export default function App() {
             </span>
           </div>
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            {playingGame.url && (
-              <a href={playingGame.url} target="_blank" rel="noopener noreferrer" className={`hidden md:block text-xs text-slate-400 hover:text-white transition-colors p-2 rounded ${focusStyles}`}>
-                Yeni Sekmede Aç
-              </a>
-            )}
+            {/* GÜVENLİK: 'Yeni Sekmede Aç' butonunu kaldırdık ki kullanıcılar direkt Vercel linkine gitmesin */}
             <button onClick={() => setPlayingGame(null)} autoFocus className={`flex items-center gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}>
               <X className="w-4 h-4" /> <span className="hidden sm:inline">Oyundan Çık</span>
             </button>
@@ -463,8 +467,9 @@ export default function App() {
           ) : playingGame.url ? (
             <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
               {/* OYUNLARIN AÇILMASI İÇİN TÜM TARAYICI İZİNLERİ (ALLOW) EKLENDİ */}
+              {/* URL'yi güvenli parametre eklenmiş haliyle (getSecureGameUrl) çağırıyoruz */}
               <iframe
-                src={playingGame.url}
+                src={getSecureGameUrl(playingGame.url)}
                 className="w-full h-full border-none outline-none"
                 style={{ width: "100%", height: "100%", display: "block" }}
                 title={playingGame.title}
