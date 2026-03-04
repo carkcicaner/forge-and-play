@@ -77,9 +77,9 @@ const ADMIN_EMAILS = [
    ödeme veya ürün linkini buraya yapıştır.
    ========================================================================= */
 const PAYMENT_LINKS = {
-  "1A": "https://www.shopier.com/ShowProductNew/products.php?id=ORNEK_AYLIK",
-  "6A": "https://senin-magazan.myshopify.com/cart/add?id=ORNEK_6AYLIK",
-  "1Y": "https://iyzi.link/ORNEK_YILLIK"
+  "1A": "https://www.shopier.com/forgeandplay/44689059",
+  "6A": "https://www.shopier.com/forgeandplay/44689160",
+  "1Y": "https://www.shopier.com/forgeandplay/44689235"
 };
 
 const LOGO_URL = "https://i.ibb.co/HppdF5nY/freepik-minimal-futuristic-gaming-logo-forge-hammer-combin-64278.png";
