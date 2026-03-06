@@ -186,6 +186,21 @@ const GAMES = [
     image: "https://images.unsplash.com/photo-1518133835878-5a93ac3f000c?auto=format&fit=crop&q=80&w=800",
     requiresPremium: false,
   },
+  {
+    id: "forge-play-quiz",
+    title: "Forge&Play Quiz",
+    status: "Yayında",
+    type: "live",
+    tags: ["Bilgi", "Yarışma", "Zeka"],
+    description: "Genel kültürünü sına, arkadaşlarınla yarış! Forge&Play'e özel hazırlanan bu bilgi yarışmasıyla liderlik tablosuna adını yazdır.",
+    price: "Premium İçerik",
+    players: "Yeni Eklendi",
+    gradient: "from-indigo-900 via-blue-950 to-black",
+    iconKey: "help",
+    url: "https://forge-and-play-quiz.vercel.app/",
+    image: "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?auto=format&fit=crop&q=80&w=800",
+    requiresPremium: true,
+  },
 ];
 
 const LAB_PROJECTS = [
@@ -421,7 +436,6 @@ export default function App() {
     const isLockedPremium = playingGame.requiresPremium && !isUserPremium(currentUser);
 
     // Güvenlik Parametresi: Oyun URL'sinin sonuna gizli bir anahtar ekliyoruz.
-    // Oyun tarafında bu anahtarı kontrol edeceğiz.
     const getSecureGameUrl = (baseurl) => {
       if (!baseurl) return "";
       const separator = baseurl.includes("?") ? "&" : "?";
@@ -442,7 +456,7 @@ export default function App() {
             </span>
           </div>
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            {/* GÜVENLİK: 'Yeni Sekmede Aç' butonunu kaldırdık ki kullanıcılar direkt Vercel linkine gitmesin */}
+            {/* GÜVENLİK: Dışarı çıkışı engellemek için 'Yeni Sekmede Aç' butonunu sildik. */}
             <button onClick={() => setPlayingGame(null)} autoFocus className={`flex items-center gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}>
               <X className="w-4 h-4" /> <span className="hidden sm:inline">Oyundan Çık</span>
             </button>
@@ -467,7 +481,6 @@ export default function App() {
           ) : playingGame.url ? (
             <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
               {/* OYUNLARIN AÇILMASI İÇİN TÜM TARAYICI İZİNLERİ (ALLOW) EKLENDİ */}
-              {/* URL'yi güvenli parametre eklenmiş haliyle (getSecureGameUrl) çağırıyoruz */}
               <iframe
                 src={getSecureGameUrl(playingGame.url)}
                 className="w-full h-full border-none outline-none"
