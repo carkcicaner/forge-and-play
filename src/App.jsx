@@ -323,11 +323,12 @@ export default function App() {
   }, [usersList, adminSearch]);
 
   /* ---------------------------------------------
-     FIREBASE: KULLANICI (AUTH) DİNLEYİCİSİ
+     FIREBASE: KULLANICI (AUTH) DİNLEYİCİSİ VE OTOMATİK ADMİN ATAMASI
   ---------------------------------------------- */
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Kullanıcı giriş yaptı, veritabanından bilgilerini çekelim
         const userRef = doc(db, "users", firebaseUser.uid);
         const unsubUser = onSnapshot(userRef, (docSnap) => {
           const isAdminEmail = ADMIN_EMAILS.includes(firebaseUser.email);
@@ -335,6 +336,8 @@ export default function App() {
           if (docSnap.exists()) {
             const userData = docSnap.data();
             
+            // Eğer kullanıcı önceden standart olarak kayıt olduysa ama sonradan 
+            // mailli ADMIN_EMAILS listesine eklendiyse, onu otomatik Admin yap!
             if (isAdminEmail && userData.role !== "admin") {
               updateDoc(userRef, { 
                 role: "admin", 
@@ -342,15 +345,25 @@ export default function App() {
               });
             }
             
+            // Kullanıcı için 4 haneli kısa bir ödeme onay kodu oluştur (sadece ilk sefer)
+            if (!userData.paymentCode) {
+               const code = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
+               updateDoc(userRef, { paymentCode: code });
+               userData.paymentCode = code;
+            }
+
             setCurrentUser({ id: firebaseUser.uid, ...userData });
           } else {
+            // İlk kez giren kullanıcıysa veritabanında kaydını oluştur
+            const paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
             const newUser = {
               name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
               email: firebaseUser.email,
-              role: isAdminEmail ? "admin" : "user",
+              role: isAdminEmail ? "admin" : "user", // Admin maili ise yetki ver
               premiumEndDate: isAdminEmail ? new Date("2099-01-01").toISOString() : null,
               pendingRequest: null,
-              playCount: 0 // İstatistik için yeni alan
+              playCount: 0,
+              paymentCode: paymentCode
             };
             setDoc(userRef, newUser);
             setCurrentUser({ id: firebaseUser.uid, ...newUser });
@@ -844,11 +857,20 @@ export default function App() {
 
     const paymentUrl = PAYMENT_LINKS[plan];
     if (paymentUrl) {
-      window.open(paymentUrl, "_blank");
+      // YENİ UYARI: Kullanıcıya kodunu gösteriyoruz ve kopyalamasını söylüyoruz.
+      const confirmMessage = `ÖNEMLİ ADIM:\n\nÖdemenizin hesabınıza anında işlenebilmesi için lütfen Shopier ödeme ekranındaki "Sipariş Notu" kısmına şu kodu yazın:\n\n${currentUser.paymentCode}\n\nKodu kopyaladınız mı? Devam etmek için Tamam'a basın.`;
+      
+      if(window.confirm(confirmMessage)) {
+         // Kodu otomatik olarak panoya kopyala
+         try {
+           navigator.clipboard.writeText(currentUser.paymentCode);
+         } catch(e) {}
+         window.open(paymentUrl, "_blank");
+         setShowPricingModal(false);
+      }
     } else {
       alert("Bu plan için ödeme linki henüz tanımlanmadı.");
     }
-    setShowPricingModal(false);
   };
 
   const renderPricingModal = () => (
@@ -1077,7 +1099,7 @@ export default function App() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-900 text-slate-400 text-xs uppercase border-b border-slate-800">
-                    <th className="px-6 py-4 font-semibold">Kullanıcı</th>
+                    <th className="px-6 py-4 font-semibold">Kullanıcı (Kod)</th>
                     <th className="px-6 py-4 font-semibold">E-posta</th>
                     <th className="px-6 py-4 font-semibold text-center">Durum</th>
                     <th className="px-6 py-4 font-semibold text-right">İşlem</th>
@@ -1090,13 +1112,16 @@ export default function App() {
                     const isPending = user.pendingRequest !== null;
                     return (
                       <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
-                        <td className="px-6 py-4 text-sm font-medium text-white">{user.name}</td>
+                        <td className="px-6 py-4">
+                           <div className="text-sm font-medium text-white">{user.name}</div>
+                           <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {user.paymentCode || "KOD-YOK"}</div>
+                        </td>
                         <td className="px-6 py-4 text-sm text-slate-400">{user.email}</td>
                         <td className="px-6 py-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            {isPending ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({user.pendingRequest})</span>
-                            ) : (
+                        <div className="flex flex-col items-center gap-1">
+                          {isPending ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({user.pendingRequest})</span>
+                          ) : (
                               <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${isPremium ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : remDays !== null && remDays <= 0 ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
                                 {isPremium ? "AKTİF" : remDays !== null && remDays <= 0 ? "SÜRESİ DOLDU" : "STANDART"}
                               </span>
@@ -1402,7 +1427,17 @@ export default function App() {
         </div>
       </footer>
       {renderMobileBottomNav()}
-      <style dangerouslySetInnerHTML={{ __html: `.pb-safe { padding-bottom: env(safe-area-inset-bottom); }` }} />
+      {/* Sitenin dışına taşmaları ve beyazlıkları önleyen kesin CSS çözümü */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        html, body, #root {
+          max-width: 100vw;
+          overflow-x: hidden;
+          margin: 0;
+          padding: 0;
+          background-color: #020617; /* bg-slate-950 ile aynı renk */
+        }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+      ` }} />
     </div>
   );
 }
