@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   Gamepad2,
   Library,
@@ -35,24 +35,28 @@ import {
 
 // --- FIREBASE IMPORTLARI ---
 import { initializeApp } from "firebase/app";
-import { 
-  getAuth, 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut 
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail
 } from "firebase/auth";
-import { 
-  getFirestore, 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  updateDoc, 
+import {
+  getFirestore,
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
   addDoc,
-  deleteDoc 
+  deleteDoc,
+  query,
+  orderBy,
+  serverTimestamp
 } from "firebase/firestore";
 
 /* =========================================================================
@@ -71,12 +75,12 @@ const firebaseConfig = {
 const isFirebaseConfigured = firebaseConfig.apiKey !== "BURAYA_GELECEK";
 
 /* =========================================================================
-   👑 ADMİN E-POSTA TANIMLAMALARI
+   👑 ADMİN E-POSTA TANIMLAMALARI (Güvenlik: Sabit kodlanmış admin listesi)
    ========================================================================= */
 const ADMIN_EMAILS = [
   "forgeandplay@gmail.com",
   "carkci.caner@gmail.com"
-];
+].map(email => email.toLowerCase().trim());
 
 /* =========================================================================
    💳 ÖDEME LİNKLERİ
@@ -95,10 +99,11 @@ if (isFirebaseConfigured) {
   auth = getAuth(app);
   db = getFirestore(app);
   googleProvider = new GoogleAuthProvider();
+  googleProvider.setCustomParameters({ prompt: 'select_account' });
 }
 
 /* ---------------------------------------------
-   OYUN VERİLERİ (MOCK DATA)
+    OYUN VERİLERİ (MOCK DATA)
 ---------------------------------------------- */
 const GAMES = [
   {
@@ -215,42 +220,83 @@ const LAB_PROJECTS = [
 const focusStyles = "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-500 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950";
 
 /* ---------------------------------------------
-   KÜFÜR FİLTRESİ SÖZLÜĞÜ
+    KÜFÜR FİLTRESİ SÖZLÜĞÜ - Genişletildi
 ---------------------------------------------- */
 const BAD_WORDS = [
-  "amk", "aq", "sg", "siktir", "yavşak", "oç", "orospu", "piç", "ibne", "göt", "sik", "yarrak", "am", "meme"
+  "amk", "aq", "sg", "siktir", "yavşak", "oç", "orospu", "piç", "ibne",
+  "göt", "sik", "yarrak", "am", "meme", "sikik", "amcık", "orospu çocuğu",
+  "ananı", "bacı", "pezevenk", "gerizekalı", "salak", "aptal"
 ];
 
-/* ---------------------------------------------
-   YARDIMCI (HELPER) FONKSİYONLAR - GÜÇLENDİRİLDİ
----------------------------------------------- */
-
-// KESİN ADMİN KONTROLÜ - Veritabanındaki değere bakılmaksızın e-posta adresinden yetkiyi onaylar.
-const isUserAdmin = (user) => {
-  if (!user) return false;
-  if (user.role === "admin") return true;
-  if (user.email) {
-    const userEmail = user.email.toLowerCase().trim();
-    return ADMIN_EMAILS.some(adminEmail => adminEmail.toLowerCase().trim() === userEmail);
-  }
-  return false;
+// Güvenlik: Metin temizleme (XSS koruması)
+const sanitizeText = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/[<>]/g, '') // HTML taglarını kaldır
+    .replace(/[{}[\]()]/g, '') // JSON benzeri yapıları temizle
+    .trim();
 };
 
+// Küfür kontrolü
+const containsProfanity = (text) => {
+  if (!text) return false;
+  const lowerText = text.toLowerCase();
+  return BAD_WORDS.some(word => lowerText.includes(word));
+};
+
+/* ---------------------------------------------
+    YARDIMCI (HELPER) FONKSİYONLAR
+---------------------------------------------- */
+
+// Güvenli admin kontrolü
+const isUserAdmin = (user) => {
+  if (!user || !user.email) return false;
+  if (user.role === "admin") return true;
+  const userEmail = user.email.toLowerCase().trim();
+  return ADMIN_EMAILS.includes(userEmail);
+};
+
+// Güvenli premium kontrolü
 const isUserPremium = (user) => {
   if (!user) return false;
-  if (isUserAdmin(user)) return true; // Adminler doğal olarak premium'dur
+  if (isUserAdmin(user)) return true;
   if (!user.premiumEndDate) return false;
-  return new Date(user.premiumEndDate) > new Date();
+  try {
+    return new Date(user.premiumEndDate) > new Date();
+  } catch {
+    return false;
+  }
 };
 
 const getRemainingDays = (dateString) => {
   if (!dateString) return null;
-  const diffTime = new Date(dateString) - new Date();
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  try {
+    const diffTime = new Date(dateString) - new Date();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  } catch {
+    return null;
+  }
 };
 
+// Rate limiter (bot koruması)
+const createRateLimiter = (maxAttempts = 5, timeWindow = 60000) => {
+  const attempts = new Map();
+  return (key) => {
+    const now = Date.now();
+    const userAttempts = attempts.get(key) || [];
+    const recent = userAttempts.filter(time => now - time < timeWindow);
+    if (recent.length >= maxAttempts) return false;
+    recent.push(now);
+    attempts.set(key, recent);
+    return true;
+  };
+};
+
+const feedbackRateLimiter = createRateLimiter(3, 60000); // 1 dk'da 3 feedback
+const loginRateLimiter = createRateLimiter(5, 300000);  // 5 dk'da 5 login
+
 /* ---------------------------------------------
-   ICON MAP
+    ICON MAP
 ---------------------------------------------- */
 function GameIcon({ iconKey, className }) {
   const cls = className || "w-10 h-10 md:w-12 md:h-12";
@@ -264,18 +310,25 @@ function GameIcon({ iconKey, className }) {
 }
 
 /* ---------------------------------------------
-   CANLI OYUNCU SAYACI BİLEŞENİ
+    CANLI OYUNCU SAYACI
 ---------------------------------------------- */
 function LivePlayerCount({ base }) {
   const [count, setCount] = useState(base);
+  const mounted = useRef(true);
 
   useEffect(() => {
+    mounted.current = true;
     if (base === 0) return;
     const interval = setInterval(() => {
-      const fluctuation = Math.floor(Math.random() * 9) - 3;
-      setCount(prev => Math.max(base - 50, prev + fluctuation));
+      if (mounted.current) {
+        const fluctuation = Math.floor(Math.random() * 9) - 3;
+        setCount(prev => Math.max(base - 50, Math.min(base + 50, prev + fluctuation)));
+      }
     }, 4000);
-    return () => clearInterval(interval);
+    return () => {
+      mounted.current = false;
+      clearInterval(interval);
+    };
   }, [base]);
 
   if (base === 0) return <span className="text-[10px] md:text-xs text-slate-500 mb-0.5">Yakında</span>;
@@ -291,6 +344,174 @@ function LivePlayerCount({ base }) {
   );
 }
 
+/* ---------------------------------------------
+    FEEDBACK FORMU BİLEŞENİ (Bot korumalı)
+---------------------------------------------- */
+const FeedbackForm = ({ currentUser, onSubmit }) => {
+  const [text, setText] = useState("");
+  const [game, setGame] = useState("Vampir Köylü");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [charCount, setCharCount] = useState(0);
+  // Honeypot alanı (botlar doldurur)
+  const [honeypot, setHoneypot] = useState("");
+  // Basit matematik sorusu
+  const [mathAnswer, setMathAnswer] = useState("");
+  const [mathQuestion] = useState(() => {
+    const a = Math.floor(Math.random() * 5) + 1;
+    const b = Math.floor(Math.random() * 5) + 1;
+    return { a, b, answer: a + b };
+  });
+
+  const handleTextChange = (e) => {
+    const newText = e.target.value;
+    setCharCount(newText.length);
+    if (newText.length <= 500) setText(newText);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    // Honeypot kontrolü
+    if (honeypot) {
+      setError("Bot tespit edildi.");
+      return;
+    }
+
+    // Matematik kontrolü
+    if (parseInt(mathAnswer) !== mathQuestion.answer) {
+      setError("Matematik sorusunu doğru cevaplayın.");
+      return;
+    }
+
+    if (!currentUser) {
+      setError("Giriş yapmalısınız.");
+      return;
+    }
+
+    if (!text.trim() || text.length < 10) {
+      setError("Fikir en az 10 karakter olmalıdır.");
+      return;
+    }
+
+    if (containsProfanity(text)) {
+      setError("Uygunsuz kelime tespit edildi.");
+      return;
+    }
+
+    if (!feedbackRateLimiter(currentUser.id)) {
+      setError("Çok fazla fikir gönderdiniz, lütfen bekleyin.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        text: sanitizeText(text),
+        game: sanitizeText(game)
+      });
+      setText("");
+      setCharCount(0);
+      setMathAnswer("");
+    } catch (err) {
+      setError("Gönderilirken hata oluştu.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Honeypot - gizli alan */}
+      <div className="hidden">
+        <input
+          type="text"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+          tabIndex="-1"
+          autoComplete="off"
+        />
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
+      <div>
+        <label className="block text-sm font-medium text-slate-400 mb-2">
+          Oyun Seç
+        </label>
+        <select
+          value={game}
+          onChange={(e) => setGame(e.target.value)}
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500"
+        >
+          {GAMES.filter(g => g.status === "Yayında").map(g => (
+            <option key={g.id} value={g.title}>{g.title}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-400 mb-2">
+          Fikriniz
+        </label>
+        <textarea
+          value={text}
+          onChange={handleTextChange}
+          placeholder="Oyun hakkındaki fikirlerinizi, önerilerinizi veya karşılaştığınız sorunları yazın..."
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 min-h-[120px]"
+          maxLength={500}
+          disabled={isSubmitting}
+        />
+        <div className="flex justify-end mt-1">
+          <span className={`text-xs ${charCount >= 450 ? 'text-orange-400' : 'text-slate-500'}`}>
+            {charCount}/500
+          </span>
+        </div>
+      </div>
+
+      {/* Basit matematik sorusu (bot koruması) */}
+      <div>
+        <label className="block text-sm font-medium text-slate-400 mb-2">
+          Bot değilseniz, lütfen şu işlemin sonucunu yazın: {mathQuestion.a} + {mathQuestion.b} = ?
+        </label>
+        <input
+          type="number"
+          value={mathAnswer}
+          onChange={(e) => setMathAnswer(e.target.value)}
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500"
+          required
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={isSubmitting || !text.trim()}
+        className={`w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${focusStyles}`}
+      >
+        {isSubmitting ? (
+          <>
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Gönderiliyor...
+          </>
+        ) : (
+          <>
+            <Send className="w-5 h-5" />
+            Fikri Gönder
+          </>
+        )}
+      </button>
+    </form>
+  );
+};
+
+/* ---------------------------------------------
+    ANA UYGULAMA BİLEŞENİ
+---------------------------------------------- */
 export default function App() {
   if (!isFirebaseConfigured) {
     return (
@@ -309,217 +530,221 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("store");
   const [playingGame, setPlayingGame] = useState(null);
   const [selectedLibraryGame, setSelectedLibraryGame] = useState(GAMES[0]);
-
-  // Auth / UI
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [paymentIntent, setPaymentIntent] = useState(null);
   const [isCopied, setIsCopied] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-
-  // Admin Dashboard State
   const [adminTab, setAdminTab] = useState("users");
   const [usersList, setUsersList] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
   const [adminSearch, setAdminSearch] = useState("");
-
-  // Feedback Form
-  const [newFeedbackText, setNewFeedbackText] = useState("");
-  const [newFeedbackGame, setNewFeedbackGame] = useState("Vampir Köylü");
-
-  // Store search & Slider
   const [searchQuery, setSearchQuery] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
-
-  // Login form
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
-  const featuredGames = useMemo(() => GAMES.filter((g) => g.status === "Yayında"), []);
-
+  const featuredGames = useMemo(() => GAMES.filter(g => g.status === "Yayında"), []);
   const filteredGames = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return GAMES;
-    return GAMES.filter((g) => {
-      const hay = `${g.title} ${g.description} ${g.tags.join(" ")}`.toLowerCase();
-      return hay.includes(q);
-    });
+    return GAMES.filter(g => `${g.title} ${g.description} ${g.tags.join(" ")}`.toLowerCase().includes(q));
   }, [searchQuery]);
 
   const sortedUsers = useMemo(() => {
-    const list = [...usersList].sort((a, b) => (b.pendingRequest ? 1 : 0) - (a.pendingRequest ? 1 : 0));
+    const list = [...usersList].sort((a, b) => {
+      if (a.pendingRequest && !b.pendingRequest) return -1;
+      if (!a.pendingRequest && b.pendingRequest) return 1;
+      return 0;
+    });
     const q = adminSearch.trim().toLowerCase();
     if (!q) return list;
-    return list.filter((u) => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
+    return list.filter(u => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
   }, [usersList, adminSearch]);
 
-  const isAdmin = isUserAdmin(currentUser);
+  const isAdmin = currentUser ? isUserAdmin(currentUser) : false;
 
-  /* ---------------------------------------------
-     FIREBASE: KULLANICI (AUTH) DİNLEYİCİSİ VE OTOMATİK ADMİN ATAMASI
-  ---------------------------------------------- */
+  // Kullanıcı durumu dinleyicisi
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    if (!auth) return;
+    let unsubscribeUser = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const userRef = doc(db, "users", firebaseUser.uid);
-        const unsubUser = onSnapshot(userRef, (docSnap) => {
-          
-          const userEmail = firebaseUser.email?.toLowerCase().trim() || "";
-          const isAdminEmail = ADMIN_EMAILS.some(email => email.toLowerCase().trim() === userEmail);
+        try {
+          const userRef = doc(db, "users", firebaseUser.uid);
+          unsubscribeUser = onSnapshot(userRef, async (docSnap) => {
+            const userEmail = firebaseUser.email?.toLowerCase().trim() || "";
+            const isAdminEmail = ADMIN_EMAILS.includes(userEmail);
 
-          if (docSnap.exists()) {
-            const userData = docSnap.data();
-            let needsUpdate = false;
-            const updates = {};
-            
-            if (isAdminEmail && userData.role !== "admin") {
-              updates.role = "admin";
-              updates.premiumEndDate = new Date("2099-01-01").toISOString();
-              needsUpdate = true;
+            if (docSnap.exists()) {
+              const userData = docSnap.data();
+              const updates = {};
+              if (isAdminEmail && userData.role !== "admin") {
+                updates.role = "admin";
+                updates.premiumEndDate = new Date("2099-01-01").toISOString();
+              }
+              if (!userData.paymentCode) {
+                updates.paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
+              }
+              if (Object.keys(updates).length > 0) {
+                await updateDoc(userRef, updates).catch(console.error);
+                Object.assign(userData, updates);
+              }
+              setCurrentUser({ id: firebaseUser.uid, ...userData });
+            } else {
+              const paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
+              const safeName = sanitizeText(firebaseUser.displayName || userEmail.split("@")[0] || "Oyuncu");
+              const newUser = {
+                name: safeName,
+                email: userEmail,
+                role: isAdminEmail ? "admin" : "user",
+                premiumEndDate: isAdminEmail ? new Date("2099-01-01").toISOString() : null,
+                pendingRequest: null,
+                playCount: 0,
+                paymentCode,
+                createdAt: serverTimestamp(),
+                lastLogin: serverTimestamp()
+              };
+              await setDoc(userRef, newUser);
+              setCurrentUser({ id: firebaseUser.uid, ...newUser });
             }
-            
-            if (!userData.paymentCode) {
-               updates.paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
-               needsUpdate = true;
-            }
-
-            if (needsUpdate) {
-              // Hata yakalama eklendi (yetki sorunlarında çökmemesi için)
-              updateDoc(userRef, updates).catch(err => console.error("Update error:", err));
-              Object.assign(userData, updates);
-            }
-
-            setCurrentUser({ id: firebaseUser.uid, ...userData });
-          } else {
-            const paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
-            const safeName = firebaseUser.displayName || (userEmail ? userEmail.split("@")[0] : "Oyuncu");
-
-            const newUser = {
-              name: safeName,
-              email: userEmail,
-              role: isAdminEmail ? "admin" : "user",
-              premiumEndDate: isAdminEmail ? new Date("2099-01-01").toISOString() : null,
-              pendingRequest: null,
-              playCount: 0,
-              paymentCode: paymentCode
-            };
-            setDoc(userRef, newUser).catch(err => console.error("Set error:", err));
-            setCurrentUser({ id: firebaseUser.uid, ...newUser });
-          }
+            setAuthLoading(false);
+          });
+        } catch (error) {
+          console.error("User snapshot error:", error);
           setAuthLoading(false);
-        });
-        return () => unsubUser();
+        }
       } else {
         setCurrentUser(null);
         setAuthLoading(false);
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeUser) unsubscribeUser();
+    };
   }, []);
 
-  /* ---------------------------------------------
-     FIREBASE: FEEDBACK & USERS DİNLEYİCİSİ
-  ---------------------------------------------- */
+  // Feedback ve kullanıcı listesi dinleyicileri
   useEffect(() => {
-    const unsubFeedbacks = onSnapshot(collection(db, "feedbacks"), (snapshot) => {
-      const fbList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fbList.sort((a, b) => b.createdAt - a.createdAt);
-      setFeedbacks(fbList);
-    });
+    if (!db) return;
+    const unsubscribeFeedbacks = onSnapshot(
+      query(collection(db, "feedbacks"), orderBy("createdAt", "desc")),
+      (snapshot) => {
+        const fbList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+        }));
+        setFeedbacks(fbList);
+      },
+      console.error
+    );
 
-    let unsubUsers = () => {};
-    // Burada currentUser.role yerine doğrudan güçlü isUserAdmin fonksiyonumuzu kullanıyoruz
+    let unsubscribeUsers = null;
     if (isAdmin) {
-      unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
-        const uList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setUsersList(uList);
-      });
+      unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+        setUsersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, console.error);
     }
 
     return () => {
-      unsubFeedbacks();
-      unsubUsers();
+      unsubscribeFeedbacks();
+      if (unsubscribeUsers) unsubscribeUsers();
     };
   }, [isAdmin]);
 
-  /* ---------------------------------------------
-     DİĞER YARDIMCI İŞLEMLER
-  ---------------------------------------------- */
-  const openGame = async (game) => {
+  // Oyun açma
+  const openGame = useCallback(async (game) => {
     if (!game) return;
+    if (game.requiresPremium && !isUserPremium(currentUser)) {
+      setShowPricingModal(true);
+      return;
+    }
+    if (!game.url) {
+      alert("Bu oyun henüz yayında değil.");
+      return;
+    }
     setPlayingGame(game);
-
-    if (game.url && (!game.requiresPremium || isUserPremium(currentUser))) {
-      if (currentUser) {
-        try {
-          await updateDoc(doc(db, "users", currentUser.id), { 
-            playCount: (currentUser.playCount || 0) + 1 
-          });
-        } catch(e) {
-          console.error("Play count update failed", e);
-        }
+    if (currentUser) {
+      try {
+        await updateDoc(doc(db, "users", currentUser.id), {
+          playCount: (currentUser.playCount || 0) + 1,
+          lastPlayed: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Play count update failed:", error);
       }
     }
-  };
+  }, [currentUser]);
 
-  const calculateRank = (playCount) => {
-    const baseRank = 50000;
-    const rank = baseRank - (playCount * 142);
-    return rank < 1 ? 1 : rank.toLocaleString('tr-TR');
-  };
-
-  useEffect(() => {
-    const setVh = () => {
-      const vh = window.innerHeight * 0.01;
-      document.documentElement.style.setProperty("--vh", `${vh}px`);
-    };
-    setVh();
-    window.addEventListener("resize", setVh);
-    return () => window.removeEventListener("resize", setVh);
-  }, []);
-
-  useEffect(() => {
-    if (activeTab !== "store" || playingGame) return;
-    if (!featuredGames.length) return;
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % featuredGames.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [activeTab, playingGame, featuredGames.length]);
-
-  const handleGameKeypress = (e, game) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      openGame(game);
+  const getSecureGameUrl = useCallback((baseUrl) => {
+    if (!baseUrl) return "";
+    try {
+      const url = new URL(baseUrl);
+      url.searchParams.set("source", "forgeandplay");
+      url.searchParams.set("userId", currentUser?.id || "guest");
+      return url.toString();
+    } catch {
+      return baseUrl;
     }
-  };
+  }, [currentUser]);
 
-  /* ---------------------------------------------
-     FIREBASE: GİRİŞ İŞLEMLERİ
-  ---------------------------------------------- */
+  // Login işlemleri
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setAuthError("");
     const email = emailInput.trim().toLowerCase();
-    if (!email || !passwordInput) return;
-
+    if (!email || !passwordInput) {
+      setAuthError("E-posta ve şifre boş bırakılamaz.");
+      return;
+    }
+    if (!loginRateLimiter(email)) {
+      setAuthError("Çok fazla başarısız deneme. Lütfen 5 dakika bekleyin.");
+      return;
+    }
     try {
       if (isRegistering) {
+        if (passwordInput.length < 6) {
+          setAuthError("Şifre en az 6 karakter olmalıdır.");
+          return;
+        }
         await createUserWithEmailAndPassword(auth, email, passwordInput);
       } else {
         await signInWithEmailAndPassword(auth, email, passwordInput);
       }
       setShowLoginModal(false);
       setPasswordInput("");
+      setEmailInput("");
     } catch (error) {
-      console.error(error);
-      if (error.code === 'auth/email-already-in-use') setAuthError("Bu e-posta zaten kayıtlı!");
-      else if (error.code === 'auth/wrong-password') setAuthError("Hatalı şifre!");
-      else if (error.code === 'auth/user-not-found') setAuthError("Kullanıcı bulunamadı!");
-      else setAuthError("Bir hata oluştu: " + error.message);
+      console.error("Login error:", error);
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          setAuthError("Bu e-posta adresi zaten kullanılıyor.");
+          break;
+        case 'auth/invalid-email':
+          setAuthError("Geçersiz e-posta adresi.");
+          break;
+        case 'auth/user-disabled':
+          setAuthError("Bu hesap devre dışı bırakılmış.");
+          break;
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+          setAuthError("E-posta veya şifre hatalı.");
+          break;
+        case 'auth/too-many-requests':
+          setAuthError("Çok fazla başarısız deneme. Hesabınız geçici olarak kilitlendi.");
+          break;
+        default:
+          setAuthError("Giriş yapılırken bir hata oluştu.");
+      }
     }
   };
 
@@ -529,22 +754,77 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
       setShowLoginModal(false);
     } catch (error) {
-      console.error(error);
-      setAuthError("Google ile giriş yapılamadı.");
+      console.error("Google login error:", error);
+      setAuthError(error.code === 'auth/popup-closed-by-user' ? "Giriş penceresi kapatıldı." : "Google ile giriş yapılamadı.");
     }
   };
 
-  /* ---------------------------------------------
-     PLAYER OVERLAY
-  ---------------------------------------------- */
+  const handlePasswordReset = async () => {
+    if (!emailInput) {
+      setAuthError("Şifre sıfırlama için e-posta adresinizi girin.");
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, emailInput);
+      setAuthError("Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.");
+      setShowResetPassword(false);
+    } catch (error) {
+      console.error("Password reset error:", error);
+      setAuthError("Şifre sıfırlama e-postası gönderilemedi.");
+    }
+  };
+
+  // Satın alma talebi
+  const handlePurchaseRequest = async (plan) => {
+    if (!currentUser) {
+      setShowPricingModal(false);
+      setShowLoginModal(true);
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "users", currentUser.id), {
+        pendingRequest: plan,
+        lastPurchaseAttempt: serverTimestamp()
+      });
+      const paymentUrl = PAYMENT_LINKS[plan];
+      if (paymentUrl) {
+        setShowPricingModal(false);
+        setPaymentIntent({ url: paymentUrl, plan });
+      } else {
+        alert("Bu plan için ödeme linki henüz tanımlanmadı.");
+      }
+    } catch (error) {
+      console.error("Purchase request error:", error);
+      alert("Satın alma talebi oluşturulurken bir hata oluştu.");
+    }
+  };
+
+  // Feedback gönderme
+  const handleFeedbackSubmit = async (feedbackData) => {
+    if (!currentUser) return;
+    setIsSubmittingFeedback(true);
+    try {
+      await addDoc(collection(db, "feedbacks"), {
+        ...feedbackData,
+        userId: currentUser.id,
+        user: currentUser.name || currentUser.email,
+        email: currentUser.email,
+        status: "beklemede",
+        createdAt: serverTimestamp(),
+        date: new Date().toLocaleDateString('tr-TR')
+      });
+    } catch (error) {
+      console.error("Feedback submit error:", error);
+      throw error;
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
+  // Oyun overlay
   if (playingGame) {
     const isLockedPremium = playingGame.requiresPremium && !isUserPremium(currentUser);
-
-    const getSecureGameUrl = (baseurl) => {
-      if (!baseurl) return "";
-      const separator = baseurl.includes("?") ? "&" : "?";
-      return `${baseurl}${separator}source=forgeandplay_secure_access`;
-    };
+    const secureUrl = getSecureGameUrl(playingGame.url);
 
     return (
       <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in zoom-in-95 duration-300" style={{ height: "calc(var(--vh, 1vh) * 100)" }}>
@@ -556,12 +836,18 @@ export default function App() {
             <span className="inline tracking-tight">Forge<span className="text-orange-500">&</span>Play</span>
             <span className="hidden sm:inline text-slate-600 select-none">|</span>
             <span className="text-xs md:text-sm text-slate-300 font-medium truncate flex items-center gap-2">
-              <span className="hidden sm:inline">Oynanıyor:</span> <span className="text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">{playingGame.title}</span>
+              <span className="hidden sm:inline">Oynanıyor:</span>
+              <span className="text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">{playingGame.title}</span>
             </span>
           </div>
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            <button onClick={() => setPlayingGame(null)} autoFocus className={`flex items-center gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}>
-              <X className="w-4 h-4" /> <span className="hidden sm:inline">Oyundan Çık</span>
+            <button
+              onClick={() => setPlayingGame(null)}
+              autoFocus
+              className={`flex items-center gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}
+            >
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Oyundan Çık</span>
             </button>
           </div>
         </div>
@@ -573,10 +859,16 @@ export default function App() {
               <h2 className="text-2xl font-bold text-white">Premium İçerik</h2>
               <p className="text-slate-400"><b>{playingGame.title}</b> içeriğini kullanabilmek için aktif aboneliğiniz olmalıdır.</p>
               <div className="pt-4 space-y-3">
-                <button onClick={() => {setPlayingGame(null); setActiveTab("premium");}} className={`flex items-center justify-center gap-2 w-full px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-500 font-bold transition-colors ${focusStyles}`}>
+                <button
+                  onClick={() => {setPlayingGame(null); setActiveTab("premium");}}
+                  className={`flex items-center justify-center gap-2 w-full px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-500 font-bold transition-colors ${focusStyles}`}
+                >
                   <Sparkles className="w-5 h-5" /> Abonelik Planlarını Gör
                 </button>
-                <button onClick={() => setPlayingGame(null)} className={`w-full px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}>
+                <button
+                  onClick={() => setPlayingGame(null)}
+                  className={`w-full px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}
+                >
                   Vazgeç
                 </button>
               </div>
@@ -584,18 +876,23 @@ export default function App() {
           ) : playingGame.url ? (
             <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
               <iframe
-                src={getSecureGameUrl(playingGame.url)}
+                src={secureUrl}
                 className="w-full h-full border-none outline-none"
                 style={{ width: "100%", height: "100%", display: "block" }}
                 title={playingGame.title}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; microphone; camera; fullscreen"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+                loading="lazy"
               />
             </div>
           ) : (
             <div className="text-center space-y-4 p-6">
               <FlaskConical className="w-16 h-16 text-slate-700 mx-auto animate-bounce" />
               <h2 className="text-xl md:text-2xl font-bold text-slate-400">Oyun Henüz Hazır Değil</h2>
-              <button onClick={() => setPlayingGame(null)} className={`mt-4 px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}>
+              <button
+                onClick={() => setPlayingGame(null)}
+                className={`mt-4 px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}
+              >
                 Geri Dön
               </button>
             </div>
@@ -605,120 +902,7 @@ export default function App() {
     );
   }
 
-  /* ---------------------------------------------
-     COMPONENTS
-  ---------------------------------------------- */
-  const renderNavbar = () => (
-    <nav className="sticky top-0 z-50 w-full bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/60 shadow-sm transition-all">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 lg:h-20 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-6 lg:gap-10">
-          <button className={`flex items-center gap-2.5 cursor-pointer rounded-lg py-1 ${focusStyles} shrink-0`} onClick={() => setActiveTab("store")}>
-            <div className="bg-slate-900 border border-slate-800 p-1.5 lg:p-2 rounded-xl shadow-lg shadow-orange-500/10 flex items-center justify-center">
-              <img src={LOGO_URL} alt="Forge&Play Logo" className="w-6 h-6 lg:w-7 lg:h-7 object-contain" />
-            </div>
-            <div className="text-xl lg:text-2xl font-black tracking-tight text-white hidden sm:block">
-              Forge<span className="text-orange-500">&</span>Play
-            </div>
-          </button>
-          <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
-            {[
-              { id: "store", icon: Sparkles, label: "Mağaza" },
-              { id: "library", icon: Library, label: "Kütüphanem" },
-              { id: "lab", icon: FlaskConical, label: "Laboratuvar" },
-              { id: "feedback", icon: Lightbulb, label: "Fikir Kutusu" },
-            ].map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm transition-all ${focusStyles} ${activeTab === tab.id ? "bg-slate-800/80 text-white shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"}`}>
-                <tab.icon className="w-4 h-4" /> {tab.label}
-              </button>
-            ))}
-
-            <div className="pl-2 border-l border-slate-800 ml-2">
-              <button onClick={() => setActiveTab("premium")} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-sm transition-all ${focusStyles} ${activeTab === "premium" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.4)] scale-105" : "bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 hover:shadow-[0_0_10px_rgba(245,158,11,0.2)]"}`}>
-                <Crown className="w-4 h-4" /> Premium Al
-              </button>
-            </div>
-
-            {isAdmin && (
-              <button onClick={() => setActiveTab("admin")} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-sm transition-all ml-2 border border-slate-700 ${focusStyles} ${activeTab === "admin" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-white hover:bg-slate-800"}`}>
-                <Lock className="w-4 h-4" /> Admin
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 md:gap-5 shrink-0">
-          <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-orange-500 transition-colors">
-            <Search className="w-4 h-4 text-slate-400" />
-            <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Oyun ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-32 lg:w-48 placeholder-slate-500" />
-          </div>
-          <button className={`md:hidden p-2.5 bg-slate-900 text-slate-400 hover:text-white rounded-full border border-slate-800 ${focusStyles}`} onClick={() => setActiveTab("store")}>
-            <Search className="w-4 h-4" />
-          </button>
-
-          {authLoading ? (
-             <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          ) : currentUser ? (
-            <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
-              <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
-                <span className="text-sm font-bold text-white leading-tight">{currentUser.name || "Kullanıcı"}</span>
-                {isAdmin ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-amber-400">Yönetici</span>
-                ) : currentUser.pendingRequest ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-amber-500 animate-pulse">Onay Bekleniyor</span>
-                ) : isUserPremium(currentUser) ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-emerald-400">Premium ({getRemainingDays(currentUser.premiumEndDate)} Gün)</span>
-                ) : getRemainingDays(currentUser.premiumEndDate) !== null && getRemainingDays(currentUser.premiumEndDate) <= 0 ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-red-400">Süresi Bitti</span>
-                ) : (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-slate-500">Standart Profil</span>
-                )}
-              </div>
-              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
-                {String(currentUser.name || "U").charAt(0).toUpperCase()}
-              </div>
-              <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
-                <LogOut className="w-4 h-4 lg:w-5 lg:h-5" />
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setShowLoginModal(true)} className={`flex items-center justify-center gap-2 px-4 py-2 md:px-5 md:py-2.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-orange-500/20 ${focusStyles} shrink-0`}>
-              <User className="w-4 h-4" />
-              <span className="hidden sm:inline">Giriş Yap / Kayıt Ol</span>
-              <span className="sm:hidden">Giriş</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </nav>
-  );
-
-  const renderMobileBottomNav = () => (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 z-50 pb-safe">
-      <div className="flex justify-around items-center p-2">
-        {[
-          { id: "store", icon: Sparkles, label: "Mağaza" },
-          { id: "library", icon: Library, label: "Kütüphane" },
-          { id: "premium", icon: Crown, label: "Premium" },
-          { id: "profile", icon: User, label: "Profilim" },
-        ].map(tab => (
-           <button key={tab.id} onClick={() => currentUser && tab.id === "profile" ? setActiveTab("profile") : !currentUser && tab.id === "profile" ? setShowLoginModal(true) : setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? (tab.id === "premium" ? "text-amber-500" : "text-orange-500") : "text-slate-500 hover:text-slate-300"}`}>
-            <tab.icon className={`w-6 h-6 mb-1 ${tab.id === "premium" && activeTab !== "premium" ? "text-amber-500/70" : ""}`} />
-            <span className="text-[10px] font-bold">{tab.label}</span>
-          </button>
-        ))}
-        {isAdmin && (
-          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
-            <Lock className="w-6 h-6 mb-1" />
-            <span className="text-[10px] font-bold">Admin</span>
-          </button>
-        )}
-      </div>
-    </div>
-  );
-
-  /* ---------------------------------------------
-     LOGIN MODAL
-  ---------------------------------------------- */
+  // Modal render'ları
   const renderLoginModal = () => (
     <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative">
@@ -749,6 +933,24 @@ export default function App() {
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Şifre</label>
             <input type="password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
           </div>
+
+          {!isRegistering && (
+            <div className="text-right">
+              <button type="button" onClick={() => setShowResetPassword(true)} className="text-xs text-orange-500 hover:text-orange-400">
+                Şifremi Unuttum
+              </button>
+            </div>
+          )}
+
+          {showResetPassword && (
+            <div className="p-3 bg-slate-800 rounded-lg">
+              <p className="text-sm text-slate-300 mb-2">Şifre sıfırlama bağlantısı e-posta adresinize gönderilecektir.</p>
+              <button type="button" onClick={handlePasswordReset} className="text-sm font-bold text-orange-500 hover:text-orange-400">
+                Bağlantı Gönder
+              </button>
+            </div>
+          )}
+
           <button type="submit" className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-orange-500/20 mt-2">
             {isRegistering ? "Kayıt Ol ve Başla" : "Giriş Yap"}
           </button>
@@ -780,87 +982,6 @@ export default function App() {
     </div>
   );
 
-  /* ---------------------------------------------
-     FIREBASE: SATIN ALMA TALEBİ VE KOD MODALI
-  ---------------------------------------------- */
-  const handlePurchaseRequest = async (plan) => {
-    if (!currentUser) {
-      setShowPricingModal(false);
-      setShowLoginModal(true);
-      return;
-    }
-    
-    await updateDoc(doc(db, "users", currentUser.id), { pendingRequest: plan });
-
-    const paymentUrl = PAYMENT_LINKS[plan];
-    if (paymentUrl) {
-      setShowPricingModal(false);
-      setPaymentIntent({ url: paymentUrl, plan });
-    } else {
-      alert("Bu plan için ödeme linki henüz tanımlanmadı.");
-    }
-  };
-
-  const renderPaymentCodeModal = () => {
-    if (!paymentIntent || !currentUser) return null;
-
-    const handleCopyCode = () => {
-      try {
-        navigator.clipboard.writeText(currentUser.paymentCode);
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
-      } catch (err) {
-        console.error('Kopyalama işlemi başarısız', err);
-      }
-    };
-
-    const handleProceedToShopier = () => {
-      window.open(paymentIntent.url, "_blank");
-      setPaymentIntent(null); 
-    };
-
-    return (
-      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
-          <button onClick={() => setPaymentIntent(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-          
-          <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/20">
-            <Wallet className="w-8 h-8 text-orange-500" />
-          </div>
-          
-          <h2 className="text-2xl font-black text-white mb-2">Çok Önemli Bir Adım!</h2>
-          <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-            Ödemenizin hesabınıza anında tanımlanabilmesi için Shopier ekranındaki <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded">"Sipariş Notu"</strong> kısmına aşağıdaki size özel kodu yazmanız gerekmektedir.
-          </p>
-          
-          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between shadow-inner">
-            <span className="text-2xl md:text-3xl font-mono font-black text-orange-400 tracking-wider pl-2">{currentUser.paymentCode}</span>
-            <button 
-              onClick={handleCopyCode}
-              className={`p-3 rounded-lg transition-colors flex items-center justify-center border ${isCopied ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700"}`}
-              title="Kodu Kopyala"
-            >
-              {isCopied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
-            </button>
-          </div>
-
-          <button 
-            onClick={handleProceedToShopier}
-            className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 text-lg transform hover:scale-[1.02]"
-          >
-            Kopyaladım, Ödemeye Geç
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  /* ---------------------------------------------
-     FİYATLANDIRMA KARTLARI MODÜLÜ
-  ---------------------------------------------- */
   const renderPricingCards = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
       {/* Paket 1 */}
@@ -910,6 +1031,58 @@ export default function App() {
     </div>
   );
 
+  const renderPaymentCodeModal = () => {
+    if (!paymentIntent || !currentUser) return null;
+
+    const handleCopyCode = () => {
+      try {
+        navigator.clipboard.writeText(currentUser.paymentCode);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      } catch (err) {
+        console.error('Kopyalama hatası', err);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+          <button onClick={() => setPaymentIntent(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/20">
+            <Wallet className="w-8 h-8 text-orange-500" />
+          </div>
+
+          <h2 className="text-2xl font-black text-white mb-2">Çok Önemli Bir Adım!</h2>
+          <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+            Ödemenizin hesabınıza anında tanımlanabilmesi için Shopier ekranındaki <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded">"Sipariş Notu"</strong> kısmına aşağıdaki size özel kodu yazmanız gerekmektedir.
+          </p>
+
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between shadow-inner">
+            <span className="text-2xl md:text-3xl font-mono font-black text-orange-400 tracking-wider pl-2">{currentUser.paymentCode}</span>
+            <button
+              onClick={handleCopyCode}
+              className={`p-3 rounded-lg transition-colors flex items-center justify-center border ${isCopied ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700"}`}
+              title="Kodu Kopyala"
+            >
+              {isCopied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+            </button>
+          </div>
+
+          <button
+            onClick={() => { window.open(paymentIntent.url, "_blank"); setPaymentIntent(null); }}
+            className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 text-lg transform hover:scale-[1.02]"
+          >
+            Kopyaladım, Ödemeye Geç
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderPricingModal = () => (
     <div className="fixed inset-0 z-[250] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto">
@@ -931,12 +1104,202 @@ export default function App() {
     </div>
   );
 
-  /* ---------------------------------------------
-     YENİ: PREMIUM BİLGİ SAYFASI
-  ---------------------------------------------- */
+  // Sayfa render'ları
+  const renderStore = () => {
+    const slideList = featuredGames;
+    return (
+      <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
+        <section className={`relative group cursor-pointer rounded-3xl ${focusStyles} overflow-hidden h-[450px] md:h-[500px] lg:h-[550px] shadow-2xl shrink-0`} tabIndex={0} onClick={() => slideList.length && openGame(slideList[currentSlide])} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); slideList.length && openGame(slideList[currentSlide]); } }}>
+          {!slideList.length ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900 border border-slate-800 rounded-3xl">
+              <div className="text-center space-y-3 p-6">
+                <Sparkles className="w-12 h-12 text-slate-600 mx-auto" />
+                <div className="text-white font-black text-2xl">Öne çıkan içerik yok</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {slideList.map((game, idx) => (
+                <div key={game.id} className={`absolute inset-0 transition-all duration-1000 ease-in-out ${currentSlide === idx ? "opacity-100 z-10 scale-100" : "opacity-0 z-0 scale-105 pointer-events-none"}`}>
+                  <div className={`absolute inset-0 bg-gradient-to-r ${game.gradient} opacity-95 z-0`} />
+                  {game.image && (
+                    <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+                      <img src={game.image} alt={game.title} className="w-full h-full object-cover object-center opacity-40 mix-blend-overlay" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-90"></div>
+                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/70 to-transparent opacity-80"></div>
+                    </div>
+                  )}
+
+                  <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center lg:justify-between p-6 md:p-10 lg:p-14 h-full z-10">
+                    <div className="w-full lg:max-w-2xl space-y-4 md:space-y-5">
+                      <div className="flex flex-wrap gap-2">
+                        <span className={`${currentSlide === idx ? "animate-pulse" : ""} bg-red-500/20 text-red-400 border border-red-500/30 text-xs md:text-sm font-bold px-3 py-1 rounded-full backdrop-blur-sm`}>Öne Çıkan</span>
+                        {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
+                      </div>
+                      <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{game.title}</h1>
+                      <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{game.description}</p>
+
+                      <div className="pt-2">
+                        <LivePlayerCount base={game.basePlayers} />
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
+                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); if (game.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); return; } openGame(game); }}>
+                          <Play className="w-5 h-5 fill-current" />
+                          {game.requiresPremium && !isUserPremium(currentUser) ? "Premium Al" : game.id === "monopoly-bank" ? "Sistemi Başlat" : "Hemen Oyna"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="hidden lg:flex items-center justify-center w-[220px] h-[220px] xl:w-[260px] xl:h-[260px] shrink-0 bg-slate-950/80 rounded-full border-4 border-slate-800/50 backdrop-blur-md shadow-2xl transform group-hover:scale-105 transition-transform duration-500">
+                      <GameIcon iconKey={game.iconKey} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+                {slideList.map((_, idx) => (
+                  <button key={idx} onClick={(e) => { e.stopPropagation(); setCurrentSlide(idx); }} className={`h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? "w-8 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]" : "w-2 bg-slate-500/50 hover:bg-slate-400"}`} />
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><Sparkles className="w-5 h-5 md:w-6 md:h-6 text-orange-500" /> Platform Projeleri</h2>
+            <div className="md:hidden flex items-center bg-slate-900/60 border border-slate-800 rounded-full px-3 py-2">
+              <Search className="w-4 h-4 text-slate-500" />
+              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-40" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            {filteredGames.map((game) => {
+              const locked = game.requiresPremium && !isUserPremium(currentUser);
+              return (
+                <div key={game.id} tabIndex={0} onClick={() => { if (locked && game.url) { setShowPricingModal(true); return; } openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-orange-500/50 transition-all group hover:shadow-[0_0_30px_rgba(249,115,22,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
+                  <div className={`h-32 md:h-40 bg-gradient-to-br ${game.gradient} p-4 md:p-6 flex flex-col justify-between relative overflow-hidden`}>
+                    {game.image && <img src={game.image} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay group-hover:opacity-60 transition-all transform group-hover:scale-110 duration-500 z-0 pointer-events-none" />}
+                    <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity transform group-hover:scale-110 duration-500 z-10"><GameIcon iconKey={game.iconKey} className="w-12 h-12" /></div>
+                    <div className="flex justify-between items-start z-10 relative">
+                      <span className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded-full ${game.type === "live" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-sm" : "bg-amber-500/20 text-amber-400 border border-amber-500/30 backdrop-blur-sm"}`}>{game.status}</span>
+                      {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
+                    </div>
+                    <h3 className="text-xl md:text-2xl font-bold text-white z-10 drop-shadow-md relative">{game.title}</h3>
+                  </div>
+                  <div className="p-4 md:p-6 flex-1 flex flex-col z-10 bg-slate-900">
+                    <p className="text-slate-400 text-xs md:text-sm line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 flex-1">{game.description}</p>
+                    <LivePlayerCount base={game.basePlayers} />
+                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-800">
+                      <div className="flex flex-col">
+                        <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
+                      </div>
+                      <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
+                        {game.url ? (locked ? "Premium Al" : "Oyna") : "İncele"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    );
+  };
+
+  const renderLibrary = () => (
+    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
+      <div className="w-full lg:w-1/3 xl:w-1/4 space-y-4">
+        <div className="flex items-center gap-2 mb-6 text-white font-bold text-xl px-2">
+          <Library className="w-6 h-6 text-orange-500" /> Kütüphanem
+        </div>
+        <div className="space-y-2">
+          {GAMES.filter(g => g.status === "Yayında").map(game => (
+            <button
+              key={game.id}
+              onClick={() => setSelectedLibraryGame(game)}
+              className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${selectedLibraryGame?.id === game.id ? "bg-orange-600/20 border border-orange-500/50 text-white" : "bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800"}`}
+            >
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br ${game.gradient}`}>
+                <GameIcon iconKey={game.iconKey} className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-semibold text-sm truncate">{game.title}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden flex flex-col min-h-[400px]">
+        {selectedLibraryGame ? (
+          <>
+            <div className={`absolute top-0 left-0 w-full h-48 bg-gradient-to-br ${selectedLibraryGame.gradient} opacity-20`} />
+            <div className="relative z-10 flex-1 flex flex-col">
+              <div className="flex items-start justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{selectedLibraryGame.title}</h2>
+                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">{selectedLibraryGame.description}</p>
+                  <LivePlayerCount base={selectedLibraryGame.basePlayers} />
+                </div>
+                <div className={`hidden md:flex w-20 h-20 rounded-2xl items-center justify-center shrink-0 bg-gradient-to-br ${selectedLibraryGame.gradient} shadow-xl`}>
+                  <GameIcon iconKey={selectedLibraryGame.iconKey} className="w-10 h-10 text-white" />
+                </div>
+              </div>
+              <div className="mt-auto pt-8 border-t border-slate-800">
+                <button onClick={() => { if (selectedLibraryGame.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); } else { openGame(selectedLibraryGame); } }} className="w-full sm:w-auto px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
+                  <Play className="w-5 h-5" />
+                  {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-slate-500 h-full flex-1">
+            <Library className="w-12 h-12 mb-4 opacity-50" />
+            <p>Oynamak için sol taraftan bir oyun seçin</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderLab = () => (
+    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
+      <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 md:p-10 text-center relative overflow-hidden">
+        <FlaskConical className="w-16 h-16 text-orange-500 mx-auto mb-6 opacity-80" />
+        <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Geliştirme Laboratuvarı</h2>
+        <p className="text-slate-400 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
+          Burada geleceğin oyunlarını ve AI deneyimlerini tasarlıyoruz. Geliştirme aşamasındaki projelerimize göz at ve ilerlemeyi takip et.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {LAB_PROJECTS.map(proj => (
+          <div key={proj.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 flex flex-col hover:border-slate-700 transition-all group">
+            <div className="flex justify-between items-start mb-6">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${proj.gradient}`}>
+                <FlaskConical className="w-6 h-6 text-white opacity-80" />
+              </div>
+              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{proj.status}</span>
+            </div>
+            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{proj.title}</h3>
+            <p className="text-slate-400 text-sm mb-8 flex-1">{proj.description}</p>
+            <div>
+              <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
+                <span>Tamamlanma</span>
+                <span>%{proj.progress}</span>
+              </div>
+              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div className="bg-orange-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   const renderPremiumPage = () => (
     <div className="space-y-12 md:space-y-16 animate-in fade-in duration-500 max-w-6xl mx-auto">
-      
       {/* Hero Alanı */}
       <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-amber-500/30 shadow-[0_0_40px_rgba(245,158,11,0.1)] text-center p-8 md:p-16">
         <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 pointer-events-none"></div>
@@ -1006,223 +1369,9 @@ export default function App() {
         </div>
         {renderPricingCards()}
       </div>
-
     </div>
   );
 
-  /* ---------------------------------------------
-     STORE EKRANI 
-  ---------------------------------------------- */
-  const renderStore = () => {
-    const slideList = featuredGames;
-    return (
-      <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
-        <section className={`relative group cursor-pointer rounded-3xl ${focusStyles} overflow-hidden h-[450px] md:h-[500px] lg:h-[550px] shadow-2xl shrink-0`} tabIndex={0} onClick={() => slideList.length && openGame(slideList[currentSlide])} onKeyDown={(e) => slideList.length && handleGameKeypress(e, slideList[currentSlide])}>
-          {!slideList.length ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-900 border border-slate-800 rounded-3xl">
-              <div className="text-center space-y-3 p-6">
-                <Sparkles className="w-12 h-12 text-slate-600 mx-auto" />
-                <div className="text-white font-black text-2xl">Öne çıkan içerik yok</div>
-              </div>
-            </div>
-          ) : (
-            <>
-              {slideList.map((game, idx) => (
-                <div key={game.id} className={`absolute inset-0 transition-all duration-1000 ease-in-out ${currentSlide === idx ? "opacity-100 z-10 scale-100" : "opacity-0 z-0 scale-105 pointer-events-none"}`}>
-                  <div className={`absolute inset-0 bg-gradient-to-r ${game.gradient} opacity-95 z-0`} />
-                  {game.image && (
-                    <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-                      <img src={game.image} alt={game.title} className="w-full h-full object-cover object-center opacity-40 mix-blend-overlay" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-90"></div>
-                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/70 to-transparent opacity-80"></div>
-                    </div>
-                  )}
-
-                  <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center lg:justify-between p-6 md:p-10 lg:p-14 h-full z-10">
-                    <div className="w-full lg:max-w-2xl space-y-4 md:space-y-5">
-                      <div className="flex flex-wrap gap-2">
-                        <span className={`${currentSlide === idx ? "animate-pulse" : ""} bg-red-500/20 text-red-400 border border-red-500/30 text-xs md:text-sm font-bold px-3 py-1 rounded-full backdrop-blur-sm`}>Öne Çıkan</span>
-                        {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
-                      </div>
-                      <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{game.title}</h1>
-                      <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{game.description}</p>
-                      
-                      <div className="pt-2">
-                        <LivePlayerCount base={game.basePlayers} />
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
-                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); if (game.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); return; } openGame(game); }}>
-                          <Play className="w-5 h-5 fill-current" />
-                          {game.requiresPremium && !isUserPremium(currentUser) ? "Premium Al" : game.id === "monopoly-bank" ? "Sistemi Başlat" : "Hemen Oyna"}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="hidden lg:flex items-center justify-center w-[220px] h-[220px] xl:w-[260px] xl:h-[260px] shrink-0 bg-slate-950/80 rounded-full border-4 border-slate-800/50 backdrop-blur-md shadow-2xl transform group-hover:scale-105 transition-transform duration-500">
-                      <GameIcon iconKey={game.iconKey} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
-                {slideList.map((_, idx) => (
-                  <button key={idx} onClick={(e) => { e.stopPropagation(); setCurrentSlide(idx); }} className={`h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? "w-8 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]" : "w-2 bg-slate-500/50 hover:bg-slate-400"}`} />
-                ))}
-              </div>
-            </>
-          )}
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-4 md:mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><Sparkles className="w-5 h-5 md:w-6 md:h-6 text-orange-500" /> Platform Projeleri</h2>
-            <div className="md:hidden flex items-center bg-slate-900/60 border border-slate-800 rounded-full px-3 py-2">
-              <Search className="w-4 h-4 text-slate-500" />
-              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-40" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-            {filteredGames.map((game) => {
-              const locked = game.requiresPremium && !isUserPremium(currentUser);
-              return (
-                <div key={game.id} tabIndex={0} onClick={() => { if (locked && game.url) { setShowPricingModal(true); return; } openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-orange-500/50 transition-all group hover:shadow-[0_0_30px_rgba(249,115,22,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
-                  <div className={`h-32 md:h-40 bg-gradient-to-br ${game.gradient} p-4 md:p-6 flex flex-col justify-between relative overflow-hidden`}>
-                    {game.image && <img src={game.image} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay group-hover:opacity-60 transition-all transform group-hover:scale-110 duration-500 z-0 pointer-events-none" />}
-                    <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity transform group-hover:scale-110 duration-500 z-10"><GameIcon iconKey={game.iconKey} className="w-12 h-12" /></div>
-                    <div className="flex justify-between items-start z-10 relative">
-                      <span className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded-full ${game.type === "live" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-sm" : "bg-amber-500/20 text-amber-400 border border-amber-500/30 backdrop-blur-sm"}`}>{game.status}</span>
-                      {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
-                    </div>
-                    <h3 className="text-xl md:text-2xl font-bold text-white z-10 drop-shadow-md relative">{game.title}</h3>
-                  </div>
-                  <div className="p-4 md:p-6 flex-1 flex flex-col z-10 bg-slate-900">
-                    <p className="text-slate-400 text-xs md:text-sm line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 flex-1">{game.description}</p>
-                    
-                    <LivePlayerCount base={game.basePlayers} />
-
-                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-800">
-                      <div className="flex flex-col">
-                        <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
-                      </div>
-                      <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
-                        {game.url ? (locked ? "Premium Al" : "Oyna") : "İncele"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      </div>
-    );
-  };
-
-  /* ---------------------------------------------
-     KÜTÜPHANE EKRANI 
-  ---------------------------------------------- */
-  const renderLibrary = () => (
-    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
-      <div className="w-full lg:w-1/3 xl:w-1/4 space-y-4">
-        <div className="flex items-center gap-2 mb-6 text-white font-bold text-xl px-2">
-          <Library className="w-6 h-6 text-orange-500" /> Kütüphanem
-        </div>
-        <div className="space-y-2">
-          {GAMES.filter(g => g.status === "Yayında").map(game => (
-            <button
-              key={game.id}
-              onClick={() => setSelectedLibraryGame(game)}
-              className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${selectedLibraryGame?.id === game.id ? "bg-orange-600/20 border border-orange-500/50 text-white" : "bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800"}`}
-            >
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br ${game.gradient}`}>
-                <GameIcon iconKey={game.iconKey} className="w-5 h-5 text-white" />
-              </div>
-              <span className="font-semibold text-sm truncate">{game.title}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden flex flex-col min-h-[400px]">
-        {selectedLibraryGame ? (
-          <>
-            <div className={`absolute top-0 left-0 w-full h-48 bg-gradient-to-br ${selectedLibraryGame.gradient} opacity-20`} />
-            <div className="relative z-10 flex-1 flex flex-col">
-              <div className="flex items-start justify-between mb-8">
-                <div>
-                  <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{selectedLibraryGame.title}</h2>
-                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">{selectedLibraryGame.description}</p>
-                  <LivePlayerCount base={selectedLibraryGame.basePlayers} />
-                </div>
-                <div className={`hidden md:flex w-20 h-20 rounded-2xl items-center justify-center shrink-0 bg-gradient-to-br ${selectedLibraryGame.gradient} shadow-xl`}>
-                  <GameIcon iconKey={selectedLibraryGame.iconKey} className="w-10 h-10 text-white" />
-                </div>
-              </div>
-              <div className="mt-auto pt-8 border-t border-slate-800">
-                <button onClick={() => {
-                  if (selectedLibraryGame.requiresPremium && !isUserPremium(currentUser)) {
-                    setShowPricingModal(true);
-                  } else {
-                    openGame(selectedLibraryGame);
-                  }
-                }} className="w-full sm:w-auto px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
-                  <Play className="w-5 h-5" /> 
-                  {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-           <div className="flex flex-col items-center justify-center text-slate-500 h-full flex-1">
-             <Library className="w-12 h-12 mb-4 opacity-50" />
-             <p>Oynamak için sol taraftan bir oyun seçin</p>
-           </div>
-        )}
-      </div>
-    </div>
-  );
-
-  /* ---------------------------------------------
-     LAB EKRANI
-  ---------------------------------------------- */
-  const renderLab = () => (
-    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 md:p-10 text-center relative overflow-hidden">
-        <FlaskConical className="w-16 h-16 text-orange-500 mx-auto mb-6 opacity-80" />
-        <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Geliştirme Laboratuvarı</h2>
-        <p className="text-slate-400 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
-          Burada geleceğin oyunlarını ve AI deneyimlerini tasarlıyoruz. Geliştirme aşamasındaki projelerimize göz at ve ilerlemeyi takip et.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {LAB_PROJECTS.map(proj => (
-          <div key={proj.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 flex flex-col hover:border-slate-700 transition-all group">
-            <div className="flex justify-between items-start mb-6">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${proj.gradient}`}>
-                <FlaskConical className="w-6 h-6 text-white opacity-80" />
-              </div>
-              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{proj.status}</span>
-            </div>
-            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{proj.title}</h3>
-            <p className="text-slate-400 text-sm mb-8 flex-1">{proj.description}</p>
-            <div>
-              <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
-                <span>Tamamlanma</span>
-                <span>%{proj.progress}</span>
-              </div>
-              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
-                <div className="bg-orange-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  /* ---------------------------------------------
-     PROFİL EKRANI
-  ---------------------------------------------- */
   const renderProfile = () => {
     if (!currentUser) return null;
     const isPremium = isUserPremium(currentUser);
@@ -1230,35 +1379,26 @@ export default function App() {
     const userFeedbacks = feedbacks.filter(fb => fb.userId === currentUser.id);
 
     const userBadges = [];
-    
-    if (isAdmin) {
-      userBadges.push({ id: 'admin', title: 'Platform Yöneticisi', desc: 'Sistemin koruyucusu.', icon: ShieldAlert, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' });
-    }
-    
-    if (isPremium) {
-      userBadges.push({ id: 'premium', title: 'Premium Üye', desc: 'Platformun ayrıcalıklı destekçisi.', icon: Crown, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' });
-    }
-    
+    if (isAdmin) userBadges.push({ id: 'admin', title: 'Platform Yöneticisi', desc: 'Sistemin koruyucusu.', icon: ShieldAlert, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' });
+    if (isPremium) userBadges.push({ id: 'premium', title: 'Premium Üye', desc: 'Platformun ayrıcalıklı destekçisi.', icon: Crown, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' });
     if ((currentUser.playCount || 0) >= 50) {
       userBadges.push({ id: 'gamer_pro', title: 'Efsanevi Oyuncu', desc: 'Platformda 50+ oyun oynadı.', icon: Zap, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' });
     } else if ((currentUser.playCount || 0) >= 10) {
       userBadges.push({ id: 'gamer_mid', title: 'Sıkı Oyuncu', desc: 'Platformda 10+ oyun oynadı.', icon: Gamepad2, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' });
     }
-    
     const approvedFeedbacks = userFeedbacks.filter(fb => fb.status === "onaylandi").length;
     if (approvedFeedbacks > 0) {
       userBadges.push({ id: 'idea', title: 'Fikir Öncüsü', desc: 'Topluluğa harika fikirler kattı.', icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' });
     }
-    
     if (userBadges.length === 0) {
-       userBadges.push({ id: 'newbie', title: 'Yeni Maceracı', desc: 'Platforma yeni katıldı.', icon: User, color: 'text-slate-400', bg: 'bg-slate-800', border: 'border-slate-700' });
+      userBadges.push({ id: 'newbie', title: 'Yeni Maceracı', desc: 'Platforma yeni katıldı.', icon: User, color: 'text-slate-400', bg: 'bg-slate-800', border: 'border-slate-700' });
     }
 
     return (
       <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden shadow-2xl">
           <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
-          
+
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
             <div className="w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-orange-500 to-amber-600 rounded-3xl flex items-center justify-center font-black text-white text-4xl md:text-5xl shadow-xl shadow-orange-500/20">
               {String(currentUser.name || "U").charAt(0).toUpperCase()}
@@ -1268,7 +1408,7 @@ export default function App() {
               <div className="text-slate-400 mb-4 flex items-center justify-center md:justify-start gap-2">
                 <Mail className="w-4 h-4" /> {currentUser.email || "E-posta Yok"}
               </div>
-              
+
               <div className="flex flex-wrap justify-center md:justify-start gap-3">
                 {isPremium ? (
                   <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -1287,7 +1427,7 @@ export default function App() {
               </div>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-800">
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
               <div className="text-slate-500 text-xs font-bold uppercase mb-1">Oynanan Oyun</div>
@@ -1327,7 +1467,6 @@ export default function App() {
               ))}
             </div>
           </div>
-
         </div>
 
         <div>
@@ -1363,16 +1502,58 @@ export default function App() {
     );
   };
 
-  /* ---------------------------------------------
-     FIREBASE: ADMIN DASHBOARD
-  ---------------------------------------------- */
+  const renderFeedback = () => (
+    <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center">
+        <Lightbulb className="w-16 h-16 text-orange-500 mx-auto mb-4" />
+        <h2 className="text-3xl font-black text-white mb-3">Fikir Kutusu</h2>
+        <p className="text-slate-400 text-sm mb-6 max-w-xl mx-auto">
+          Oyunlarımızla ilgili önerilerini, karşılaştığın sorunları veya aklındaki yeni fikirleri bizimle paylaş. Her fikir, platformu daha iyiye taşımamıza yardımcı olur.
+        </p>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
+        {!currentUser ? (
+          <div className="text-center py-8">
+            <p className="text-slate-400 mb-4">Fikir göndermek için giriş yapmalısın.</p>
+            <button onClick={() => setShowLoginModal(true)} className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors">
+              Giriş Yap / Kayıt Ol
+            </button>
+          </div>
+        ) : (
+          <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
+        )}
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <MessageSquarePlus className="w-5 h-5 text-orange-500" /> Son Gönderilen Fikirler
+        </h3>
+        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+          {feedbacks.slice(0, 5).map(fb => (
+            <div key={fb.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded">{fb.game}</span>
+                <span className="text-[10px] text-slate-500">{fb.user}</span>
+              </div>
+              <p className="text-sm text-slate-300">{fb.text}</p>
+            </div>
+          ))}
+          {feedbacks.length === 0 && (
+            <p className="text-slate-500 text-center py-4">Henüz fikir gönderilmemiş.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   const renderAdminDashboard = () => {
     const approvePremiumTime = async (userId, planCode) => {
       let monthsToAdd = 1;
       if (planCode === "6A") monthsToAdd = 6;
       if (planCode === "1Y") monthsToAdd = 12;
       const u = usersList.find(user => user.id === userId);
-      if(!u) return;
+      if (!u) return;
       const base = u.premiumEndDate && new Date(u.premiumEndDate) > new Date() ? new Date(u.premiumEndDate) : new Date();
       base.setMonth(base.getMonth() + monthsToAdd);
       await updateDoc(doc(db, "users", userId), { premiumEndDate: base.toISOString(), pendingRequest: null });
@@ -1387,7 +1568,7 @@ export default function App() {
     };
 
     const deleteFeedback = async (id) => {
-      if(window.confirm("Bu fikri kalıcı olarak silmek istediğinize emin misiniz?")) {
+      if (window.confirm("Bu fikri kalıcı olarak silmek istediğinize emin misiniz?")) {
         await deleteDoc(doc(db, "feedbacks", id));
       }
     };
@@ -1408,7 +1589,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* KULLANICILAR SEKMESİ */}
         {adminTab === "users" && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden animate-in fade-in">
             <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 gap-3">
@@ -1436,15 +1616,15 @@ export default function App() {
                     return (
                       <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
                         <td className="px-6 py-4">
-                           <div className="text-sm font-medium text-white">{user.name || "Kullanıcı"}</div>
-                           <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {user.paymentCode || "KOD-YOK"}</div>
+                          <div className="text-sm font-medium text-white">{user.name || "Kullanıcı"}</div>
+                          <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {user.paymentCode || "KOD-YOK"}</div>
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-400">{user.email || "E-posta Yok"}</td>
                         <td className="px-6 py-4 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          {isPending ? (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({user.pendingRequest})</span>
-                          ) : (
+                          <div className="flex flex-col items-center gap-1">
+                            {isPending ? (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({user.pendingRequest})</span>
+                            ) : (
                               <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${isPremium ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : remDays !== null && remDays <= 0 ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
                                 {isPremium ? "AKTİF" : remDays !== null && remDays <= 0 ? "SÜRESİ DOLDU" : "STANDART"}
                               </span>
@@ -1478,7 +1658,6 @@ export default function App() {
           </div>
         )}
 
-        {/* FİKİRLER SEKMESİ */}
         {adminTab === "feedbacks" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
             {feedbacks.map((fb) => (
@@ -1492,7 +1671,6 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="text-xs text-slate-500">{fb.date}</div>
-                    {/* SİLME BUTONU */}
                     <button onClick={() => deleteFeedback(fb.id)} className="text-slate-500 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition-colors" title="Kalıcı Olarak Sil">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                     </button>
@@ -1520,6 +1698,115 @@ export default function App() {
     );
   };
 
+  // Navigasyon çubukları
+  const renderNavbar = () => (
+    <nav className="sticky top-0 z-50 w-full bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/60 shadow-sm transition-all">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 lg:h-20 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-6 lg:gap-10">
+          <button className={`flex items-center gap-2.5 cursor-pointer rounded-lg py-1 ${focusStyles} shrink-0`} onClick={() => setActiveTab("store")}>
+            <div className="bg-slate-900 border border-slate-800 p-1.5 lg:p-2 rounded-xl shadow-lg shadow-orange-500/10 flex items-center justify-center">
+              <img src={LOGO_URL} alt="Forge&Play Logo" className="w-6 h-6 lg:w-7 lg:h-7 object-contain" />
+            </div>
+            <div className="text-xl lg:text-2xl font-black tracking-tight text-white hidden sm:block">
+              Forge<span className="text-orange-500">&</span>Play
+            </div>
+          </button>
+          <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
+            {[
+              { id: "store", icon: Sparkles, label: "Mağaza" },
+              { id: "library", icon: Library, label: "Kütüphanem" },
+              { id: "lab", icon: FlaskConical, label: "Laboratuvar" },
+              { id: "feedback", icon: Lightbulb, label: "Fikir Kutusu" },
+            ].map((tab) => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm transition-all ${focusStyles} ${activeTab === tab.id ? "bg-slate-800/80 text-white shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"}`}>
+                <tab.icon className="w-4 h-4" /> {tab.label}
+              </button>
+            ))}
+
+            <div className="pl-2 border-l border-slate-800 ml-2">
+              <button onClick={() => setActiveTab("premium")} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-sm transition-all ${focusStyles} ${activeTab === "premium" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.4)] scale-105" : "bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 hover:shadow-[0_0_10px_rgba(245,158,11,0.2)]"}`}>
+                <Crown className="w-4 h-4" /> Premium Al
+              </button>
+            </div>
+
+            {isAdmin && (
+              <button onClick={() => setActiveTab("admin")} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-sm transition-all ml-2 border border-slate-700 ${focusStyles} ${activeTab === "admin" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-white hover:bg-slate-800"}`}>
+                <Lock className="w-4 h-4" /> Admin
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 md:gap-5 shrink-0">
+          <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-orange-500 transition-colors">
+            <Search className="w-4 h-4 text-slate-400" />
+            <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Oyun ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-32 lg:w-48 placeholder-slate-500" />
+          </div>
+          <button className={`md:hidden p-2.5 bg-slate-900 text-slate-400 hover:text-white rounded-full border border-slate-800 ${focusStyles}`} onClick={() => setActiveTab("store")}>
+            <Search className="w-4 h-4" />
+          </button>
+
+          {authLoading ? (
+            <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          ) : currentUser ? (
+            <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
+              <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
+                <span className="text-sm font-bold text-white leading-tight">{currentUser.name || "Kullanıcı"}</span>
+                {isAdmin ? (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-amber-400">Yönetici</span>
+                ) : currentUser.pendingRequest ? (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-amber-500 animate-pulse">Onay Bekleniyor</span>
+                ) : isUserPremium(currentUser) ? (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-emerald-400">Premium ({getRemainingDays(currentUser.premiumEndDate)} Gün)</span>
+                ) : getRemainingDays(currentUser.premiumEndDate) !== null && getRemainingDays(currentUser.premiumEndDate) <= 0 ? (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-red-400">Süresi Bitti</span>
+                ) : (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-slate-500">Standart Profil</span>
+                )}
+              </div>
+              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
+                {String(currentUser.name || "U").charAt(0).toUpperCase()}
+              </div>
+              <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
+                <LogOut className="w-4 h-4 lg:w-5 lg:h-5" />
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setShowLoginModal(true)} className={`flex items-center justify-center gap-2 px-4 py-2 md:px-5 md:py-2.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-orange-500/20 ${focusStyles} shrink-0`}>
+              <User className="w-4 h-4" />
+              <span className="hidden sm:inline">Giriş Yap / Kayıt Ol</span>
+              <span className="sm:hidden">Giriş</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+
+  const renderMobileBottomNav = () => (
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 z-50 pb-safe">
+      <div className="flex justify-around items-center p-2">
+        {[
+          { id: "store", icon: Sparkles, label: "Mağaza" },
+          { id: "library", icon: Library, label: "Kütüphane" },
+          { id: "premium", icon: Crown, label: "Premium" },
+          { id: "profile", icon: User, label: "Profilim" },
+        ].map(tab => (
+          <button key={tab.id} onClick={() => currentUser && tab.id === "profile" ? setActiveTab("profile") : !currentUser && tab.id === "profile" ? setShowLoginModal(true) : setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? (tab.id === "premium" ? "text-amber-500" : "text-orange-500") : "text-slate-500 hover:text-slate-300"}`}>
+            <tab.icon className={`w-6 h-6 mb-1 ${tab.id === "premium" && activeTab !== "premium" ? "text-amber-500/70" : ""}`} />
+            <span className="text-[10px] font-bold">{tab.label}</span>
+          </button>
+        ))}
+        {isAdmin && (
+          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
+            <Lock className="w-6 h-6 mb-1" />
+            <span className="text-[10px] font-bold">Admin</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
       {renderNavbar()}
@@ -1544,14 +1831,13 @@ export default function App() {
         </div>
       </footer>
       {renderMobileBottomNav()}
-      {/* Sitenin dışına taşmaları ve beyazlıkları önleyen kesin CSS çözümü */}
       <style dangerouslySetInnerHTML={{ __html: `
         html, body, #root {
           max-width: 100vw;
           overflow-x: hidden;
           margin: 0;
           padding: 0;
-          background-color: #020617; /* bg-slate-950 ile aynı renk */
+          background-color: #020617;
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
       ` }} />
