@@ -22,7 +22,9 @@ import {
   Lightbulb,
   MessageSquarePlus,
   Send,
-  AlertTriangle
+  AlertTriangle,
+  Trophy,
+  Mail
 } from "lucide-react";
 
 // --- FIREBASE IMPORTLARI ---
@@ -58,23 +60,19 @@ const firebaseConfig = {
   appId: "1:728405020113:web:2fc64f47aa355cb5f7a4f0"
 };
 
-// Config kontrolü (Eğer değiştirilmemişse uyarı ekranı göstermek için)
+// Config kontrolü
 const isFirebaseConfigured = firebaseConfig.apiKey !== "BURAYA_GELECEK";
 
 /* =========================================================================
    👑 ADMİN E-POSTA TANIMLAMALARI
-   Buraya yazdığın e-posta adresleri sisteme girdikleri an yönetici olurlar.
-   Kendi e-postanı buraya ekleyebilirsin.
    ========================================================================= */
 const ADMIN_EMAILS = [
   "forgeandplay@gmail.com",
-  "carkci.caner@gmail.com" // <-- Buraya kendi mailini yaz!
+  "carkci.caner@gmail.com"
 ];
 
 /* =========================================================================
-   💳 ÖDEME LİNKLERİ (Shopify, Shopier, Iyzico vb.)
-   Hangi platformu kullanırsan kullan, ilgili paket için oluşturduğun 
-   ödeme veya ürün linkini buraya yapıştır.
+   💳 ÖDEME LİNKLERİ
    ========================================================================= */
 const PAYMENT_LINKS = {
   "1A": "https://www.shopier.com/forgeandplay/44689059",
@@ -104,7 +102,7 @@ const GAMES = [
     tags: ["Parti", "Çok Oyunculu", "Gizem"],
     description: "Konuş, şüphelen, oyla: Vampirleri bul, kasabayı kurtar. Yönetici kasabayı kurar, vampir sayısını belirler ve kaderleri dağıtır; oyun gece–gündüz döngüsü ile ilerler.",
     price: "Ücretsiz Oyna",
-    players: "1.2k Aktif",
+    basePlayers: 1240,
     gradient: "from-red-900 via-rose-950 to-black",
     iconKey: "user",
     url: "https://vampir-oyunu.vercel.app/",
@@ -119,7 +117,7 @@ const GAMES = [
     tags: ["Araç", "Masa Oyunu", "Finans"],
     description: "Odanı kur, arkadaşlarını davet et, dijital Monopoly rekabetini başlat. Kağıt paralarla uğraşmaya son! Arkadaşlarınızla Monopoly oynarken kasanızı dijital olarak yönetin.",
     price: "Premium İçerik",
-    players: "340 Aktif",
+    basePlayers: 345,
     gradient: "from-emerald-900 via-teal-950 to-black",
     iconKey: "wallet",
     url: "https://siprayt-monopoly.vercel.app/",
@@ -129,17 +127,17 @@ const GAMES = [
   {
     id: "tabu",
     title: "Tabu",
-    status: "Yayında", // Güncellendi
-    type: "live",      // Güncellendi
+    status: "Yayında",
+    type: "live",
     tags: ["Parti", "Kelime Oyunu", "Takım"],
     description: "Yasaklı kelimeleri kullanmadan takım arkadaşlarına gizli kelimeyi anlatmaya çalış. Süre dolmadan en çok kelimeyi bilen takım kazanır!",
-    price: "Premium İçerik", // Güncellendi
-    players: "Yeni Eklendi", // Güncellendi
+    price: "Premium İçerik",
+    basePlayers: 890,
     gradient: "from-orange-900 via-rose-950 to-black",
     iconKey: "message",
-    url: "https://tabu-game-three.vercel.app/", // Link Eklendi
+    url: "https://tabu-game-three.vercel.app/",
     image: "https://images.unsplash.com/photo-1543269664-7eef42226a21?auto=format&fit=crop&q=80&w=800",
-    requiresPremium: true, // Premium yapıldı
+    requiresPremium: true,
   },
   {
     id: "pis-yedili",
@@ -149,41 +147,11 @@ const GAMES = [
     tags: ["Kart Oyunu", "Klasik", "Çok Oyunculu"],
     description: "Klasik kart oyunu Pis 7'li şimdi dijitalde! Arkadaşlarınla toplan ve Forge&Play tarafından sunulan bu rekabetçi kart oyununda hünerlerini sergile.",
     price: "Ücretsiz Oyna",
-    players: "Yeni Eklendi",
+    basePlayers: 1560,
     gradient: "from-fuchsia-900 via-purple-950 to-black",
     iconKey: "user",
     url: "https://pis7li-oyunu.vercel.app/",
     image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=800",
-    requiresPremium: false,
-  },
-  {
-    id: "sessiz-sinema",
-    title: "Sessiz Sinema",
-    status: "Yakında",
-    type: "upcoming",
-    tags: ["Parti", "Eğlence", "Rol Yapma"],
-    description: "Hiç konuşmadan, sadece hareketlerinle en zorlu filmleri takımına anlat. Klasik sessiz sinema eğlencesi şimdi dijital ortamda.",
-    price: "Geliştiriliyor",
-    players: "Yakında",
-    gradient: "from-blue-900 via-cyan-950 to-black",
-    iconKey: "film",
-    url: null,
-    image: "https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&q=80&w=800",
-    requiresPremium: false,
-  },
-  {
-    id: "dogru-mu-salliyor-mu",
-    title: "Doğru mu, Sallıyor mu?",
-    status: "Yakında",
-    type: "upcoming",
-    tags: ["Bilgi", "Blöf", "Parti"],
-    description: "İnternetin derinliklerinden gelen garip bilgiler... Gerçek mi yoksa tamamen uydurma mı? Rakiplerini blöf yaparak kandır veya doğruyu bilerek puanları topla!",
-    price: "Geliştiriliyor",
-    players: "Yakında",
-    gradient: "from-amber-900 via-orange-950 to-black",
-    iconKey: "help",
-    url: null,
-    image: "https://images.unsplash.com/photo-1518133835878-5a93ac3f000c?auto=format&fit=crop&q=80&w=800",
     requiresPremium: false,
   },
   {
@@ -194,12 +162,27 @@ const GAMES = [
     tags: ["Bilgi", "Yarışma", "Zeka"],
     description: "Genel kültürünü sına, arkadaşlarınla yarış! Forge&Play'e özel hazırlanan bu bilgi yarışmasıyla liderlik tablosuna adını yazdır.",
     price: "Premium İçerik",
-    players: "Yeni Eklendi",
+    basePlayers: 420,
     gradient: "from-indigo-900 via-blue-950 to-black",
     iconKey: "help",
     url: "https://forge-and-play-quiz.vercel.app/",
     image: "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?auto=format&fit=crop&q=80&w=800",
     requiresPremium: true,
+  },
+  {
+    id: "sessiz-sinema",
+    title: "Sessiz Sinema",
+    status: "Yakında",
+    type: "upcoming",
+    tags: ["Parti", "Eğlence", "Rol Yapma"],
+    description: "Hiç konuşmadan, sadece hareketlerinle en zorlu filmleri takımına anlat. Klasik sessiz sinema eğlencesi şimdi dijital ortamda.",
+    price: "Geliştiriliyor",
+    basePlayers: 0,
+    gradient: "from-blue-900 via-cyan-950 to-black",
+    iconKey: "film",
+    url: null,
+    image: "https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&q=80&w=800",
+    requiresPremium: false,
   },
 ];
 
@@ -238,8 +221,36 @@ function GameIcon({ iconKey, className }) {
   }
 }
 
+/* ---------------------------------------------
+   CANLI OYUNCU SAYACI BİLEŞENİ
+---------------------------------------------- */
+function LivePlayerCount({ base }) {
+  const [count, setCount] = useState(base);
+
+  useEffect(() => {
+    if (base === 0) return;
+    const interval = setInterval(() => {
+      // Rastgele -3 ile +5 arası dalgalanma
+      const fluctuation = Math.floor(Math.random() * 9) - 3;
+      setCount(prev => Math.max(base - 50, prev + fluctuation));
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [base]);
+
+  if (base === 0) return <span className="text-[10px] md:text-xs text-slate-500 mb-0.5">Yakında</span>;
+
+  return (
+    <span className="text-[10px] md:text-xs text-emerald-400 mb-0.5 flex items-center gap-1 font-medium">
+      <span className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      </span>
+      {count.toLocaleString('tr-TR')} Oynuyor
+    </span>
+  );
+}
+
 export default function App() {
-  // Eğer Firebase bilgileri girilmemişse uyarı ekranı göster
   if (!isFirebaseConfigured) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -264,7 +275,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Firestore Data States
+  // Admin Dashboard State
+  const [adminTab, setAdminTab] = useState("users"); // "users" | "feedbacks"
   const [usersList, setUsersList] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
   const [adminSearch, setAdminSearch] = useState("");
@@ -298,16 +310,15 @@ export default function App() {
     const list = [...usersList].sort((a, b) => (b.pendingRequest ? 1 : 0) - (a.pendingRequest ? 1 : 0));
     const q = adminSearch.trim().toLowerCase();
     if (!q) return list;
-    return list.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+    return list.filter((u) => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
   }, [usersList, adminSearch]);
 
   /* ---------------------------------------------
-     FIREBASE: KULLANICI (AUTH) DİNLEYİCİSİ VE OTOMATİK ADMİN ATAMASI
+     FIREBASE: KULLANICI (AUTH) DİNLEYİCİSİ
   ---------------------------------------------- */
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Kullanıcı giriş yaptı, veritabanından bilgilerini çekelim
         const userRef = doc(db, "users", firebaseUser.uid);
         const unsubUser = onSnapshot(userRef, (docSnap) => {
           const isAdminEmail = ADMIN_EMAILS.includes(firebaseUser.email);
@@ -315,8 +326,6 @@ export default function App() {
           if (docSnap.exists()) {
             const userData = docSnap.data();
             
-            // Eğer kullanıcı önceden standart olarak kayıt olduysa ama sonradan 
-            // mailli ADMIN_EMAILS listesine eklendiyse, onu otomatik Admin yap!
             if (isAdminEmail && userData.role !== "admin") {
               updateDoc(userRef, { 
                 role: "admin", 
@@ -326,13 +335,13 @@ export default function App() {
             
             setCurrentUser({ id: firebaseUser.uid, ...userData });
           } else {
-            // İlk kez giren kullanıcıysa veritabanında kaydını oluştur
             const newUser = {
               name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
               email: firebaseUser.email,
-              role: isAdminEmail ? "admin" : "user", // Admin maili ise yetki ver
+              role: isAdminEmail ? "admin" : "user",
               premiumEndDate: isAdminEmail ? new Date("2099-01-01").toISOString() : null,
-              pendingRequest: null
+              pendingRequest: null,
+              playCount: 0 // İstatistik için yeni alan
             };
             setDoc(userRef, newUser);
             setCurrentUser({ id: firebaseUser.uid, ...newUser });
@@ -349,17 +358,15 @@ export default function App() {
   }, []);
 
   /* ---------------------------------------------
-     FIREBASE: ADMIN LİSTESİ VE FİKİR KUTUSU DİNLEYİCİSİ
+     FIREBASE: FEEDBACK & USERS DİNLEYİCİSİ
   ---------------------------------------------- */
   useEffect(() => {
-    // Fikirleri getir (Herkes görebilir)
     const unsubFeedbacks = onSnapshot(collection(db, "feedbacks"), (snapshot) => {
       const fbList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       fbList.sort((a, b) => b.createdAt - a.createdAt);
       setFeedbacks(fbList);
     });
 
-    // Admin ise tüm kullanıcıları getir
     let unsubUsers = () => {};
     if (currentUser?.role === "admin") {
       unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
@@ -375,7 +382,7 @@ export default function App() {
   }, [currentUser?.role]);
 
   /* ---------------------------------------------
-     Helpers
+     HELPERS
   ---------------------------------------------- */
   const isUserPremium = (user) => {
     if (!user) return false;
@@ -390,17 +397,31 @@ export default function App() {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  const openGame = (game) => {
+  const openGame = async (game) => {
     if (!game) return;
-    if (!game.url) {
-      setPlayingGame(game);
-      return;
-    }
-    if (game.requiresPremium && !isUserPremium(currentUser)) {
-      setPlayingGame(game);
-      return;
-    }
+    
+    // UI olarak oyunu aç veya premium kilidini göster
     setPlayingGame(game);
+
+    // Eğer gerçekten oynayabiliyorsa (Premium kısıtlamasına takılmadıysa) istatistiğini artır
+    if (game.url && (!game.requiresPremium || isUserPremium(currentUser))) {
+      if (currentUser) {
+        try {
+          await updateDoc(doc(db, "users", currentUser.id), { 
+            playCount: (currentUser.playCount || 0) + 1 
+          });
+        } catch(e) {
+          console.error("Play count update failed", e);
+        }
+      }
+    }
+  };
+
+  // Sahte Rank Hesaplayıcı (Oynama sayısına göre)
+  const calculateRank = (playCount) => {
+    const baseRank = 50000;
+    const rank = baseRank - (playCount * 142);
+    return rank < 1 ? 1 : rank.toLocaleString('tr-TR');
   };
 
   useEffect(() => {
@@ -435,7 +456,7 @@ export default function App() {
   if (playingGame) {
     const isLockedPremium = playingGame.requiresPremium && !isUserPremium(currentUser);
 
-    // Güvenlik Parametresi: Oyun URL'sinin sonuna gizli bir anahtar ekliyoruz.
+    // Güvenlik Parametresi: Dışarıdan Vercel linkine direkt girişi engeller
     const getSecureGameUrl = (baseurl) => {
       if (!baseurl) return "";
       const separator = baseurl.includes("?") ? "&" : "?";
@@ -446,17 +467,16 @@ export default function App() {
       <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in zoom-in-95 duration-300" style={{ height: "calc(var(--vh, 1vh) * 100)" }}>
         <div className="flex items-center justify-between px-4 md:px-6 py-2 md:py-3 bg-slate-950 border-b border-slate-800 shadow-xl">
           <div className="flex items-center gap-2 md:gap-3 text-white font-bold truncate">
-            <div className="hidden sm:flex bg-slate-900 p-1.5 rounded-md border border-slate-800">
-              <img src={LOGO_URL} alt="Logo" className="w-5 h-5 object-contain" />
+            <div className="flex bg-slate-900 p-1.5 rounded-md border border-slate-800 shadow-sm shadow-orange-500/20">
+              <img src={LOGO_URL} alt="Logo" className="w-5 h-5 md:w-6 md:h-6 object-contain" />
             </div>
-            <span className="hidden sm:inline">Forge&Play</span>
+            <span className="inline tracking-tight">Forge<span className="text-orange-500">&</span>Play</span>
             <span className="hidden sm:inline text-slate-600 select-none">|</span>
-            <span className="text-sm md:text-base text-slate-300 font-medium truncate">
-              Oynanıyor: <span className="text-emerald-400 font-bold">{playingGame.title}</span>
+            <span className="text-xs md:text-sm text-slate-300 font-medium truncate flex items-center gap-2">
+              <span className="hidden sm:inline">Oynanıyor:</span> <span className="text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">{playingGame.title}</span>
             </span>
           </div>
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            {/* GÜVENLİK: Dışarı çıkışı engellemek için 'Yeni Sekmede Aç' butonunu sildik. */}
             <button onClick={() => setPlayingGame(null)} autoFocus className={`flex items-center gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}>
               <X className="w-4 h-4" /> <span className="hidden sm:inline">Oyundan Çık</span>
             </button>
@@ -480,7 +500,6 @@ export default function App() {
             </div>
           ) : playingGame.url ? (
             <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
-              {/* OYUNLARIN AÇILMASI İÇİN TÜM TARAYICI İZİNLERİ (ALLOW) EKLENDİ */}
               <iframe
                 src={getSecureGameUrl(playingGame.url)}
                 className="w-full h-full border-none outline-none"
@@ -550,7 +569,7 @@ export default function App() {
              <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           ) : currentUser ? (
             <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
-              <div className="hidden sm:flex flex-col items-end justify-center h-full">
+              <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
                 <span className="text-sm font-bold text-white leading-tight">{currentUser.name}</span>
                 {currentUser.role === "admin" ? (
                   <span className="text-[10px] font-bold tracking-wide uppercase text-amber-400">Yönetici</span>
@@ -561,10 +580,10 @@ export default function App() {
                 ) : getRemainingDays(currentUser.premiumEndDate) !== null && getRemainingDays(currentUser.premiumEndDate) <= 0 ? (
                   <span className="text-[10px] font-bold tracking-wide uppercase text-red-400">Süresi Bitti</span>
                 ) : (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-slate-500">Standart</span>
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-slate-500">Standart Profil</span>
                 )}
               </div>
-              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && currentUser.role !== "admin" ? "animate-pulse" : ""}`} onClick={() => !isUserPremium(currentUser) && currentUser.role !== "admin" && setShowPricingModal(true)}>
+              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && currentUser.role !== "admin" ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
                 {currentUser.name?.charAt(0)?.toUpperCase()}
               </div>
               <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
@@ -589,9 +608,9 @@ export default function App() {
         {[
           { id: "store", icon: Sparkles, label: "Mağaza" },
           { id: "library", icon: Library, label: "Kütüphane" },
-          { id: "feedback", icon: Lightbulb, label: "Fikirler" },
+          { id: "profile", icon: User, label: "Profilim" },
         ].map(tab => (
-           <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? "text-orange-500" : "text-slate-500 hover:text-slate-300"}`}>
+           <button key={tab.id} onClick={() => currentUser && tab.id === "profile" ? setActiveTab("profile") : !currentUser && tab.id === "profile" ? setShowLoginModal(true) : setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? "text-orange-500" : "text-slate-500 hover:text-slate-300"}`}>
             <tab.icon className="w-6 h-6 mb-1" />
             <span className="text-[10px] font-bold">{tab.label}</span>
           </button>
@@ -607,7 +626,105 @@ export default function App() {
   );
 
   /* ---------------------------------------------
-     FIREBASE: GİRİŞ İŞLEMLERİ (AUTH)
+     PROFİL EKRANI (YENİ EKLENDİ)
+  ---------------------------------------------- */
+  const renderProfile = () => {
+    if (!currentUser) return null;
+    const isPremium = isUserPremium(currentUser);
+    const remDays = getRemainingDays(currentUser.premiumEndDate);
+    const userFeedbacks = feedbacks.filter(fb => fb.userId === currentUser.id);
+
+    return (
+      <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden shadow-2xl">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
+          
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
+            <div className="w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-orange-500 to-amber-600 rounded-3xl flex items-center justify-center font-black text-white text-4xl md:text-5xl shadow-xl shadow-orange-500/20">
+              {currentUser.name?.charAt(0)?.toUpperCase()}
+            </div>
+            <div className="flex-1 text-center md:text-left">
+              <h2 className="text-3xl md:text-4xl font-black text-white mb-2">{currentUser.name}</h2>
+              <div className="text-slate-400 mb-4 flex items-center justify-center md:justify-start gap-2">
+                <Mail className="w-4 h-4" /> {currentUser.email}
+              </div>
+              
+              <div className="flex flex-wrap justify-center md:justify-start gap-3">
+                {isPremium ? (
+                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Sparkles className="w-4 h-4 mr-2" /> Premium Aktif ({remDays} Gün)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                    Standart Üye
+                  </span>
+                )}
+                {currentUser.role === "admin" && (
+                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <Lock className="w-4 h-4 mr-2" /> Yönetici
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-800">
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
+              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Oynanan Oyun</div>
+              <div className="text-2xl font-black text-white">{currentUser.playCount || 0}</div>
+            </div>
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
+              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Global Sıra</div>
+              <div className="text-2xl font-black text-orange-400 flex items-center justify-center gap-1">
+                <Trophy className="w-5 h-5" /> #{calculateRank(currentUser.playCount || 0)}
+              </div>
+            </div>
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
+              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Fikir Önerisi</div>
+              <div className="text-2xl font-black text-white">{userFeedbacks.length}</div>
+            </div>
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center flex flex-col justify-center items-center">
+              {!isPremium && <button onClick={() => setShowPricingModal(true)} className="text-orange-500 hover:text-orange-400 font-bold text-sm transition-colors">Premium Al</button>}
+              {isPremium && <span className="text-emerald-500 font-bold text-sm">Ayrıcalıklısın!</span>}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-800 pb-3 flex items-center gap-2">
+            <Lightbulb className="w-5 h-5 text-orange-500" /> Benim Fikirlerim
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {userFeedbacks.length === 0 ? (
+              <div className="col-span-full p-8 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">
+                Henüz hiç fikir göndermedin. Platformu geliştirmemize yardımcı olmak için Fikir Kutusu'nu kullan!
+              </div>
+            ) : (
+              userFeedbacks.map((fb) => (
+                <div key={fb.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col h-full">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded">{fb.game}</div>
+                    <div className="text-[10px] text-slate-500">{fb.date}</div>
+                  </div>
+                  <p className="text-sm text-slate-300 mb-4 flex-1">"{fb.text}"</p>
+                  <div className="mt-auto pt-3 border-t border-slate-800/50 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-500">Durum:</span>
+                    {fb.status === "onaylandi" && <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded border border-emerald-500/20">✅ Onaylandı</span>}
+                    {fb.status === "reddedildi" && <span className="bg-red-500/10 text-red-400 text-[10px] font-bold px-2 py-1 rounded border border-red-500/20">❌ İptal Edildi</span>}
+                    {fb.status === "inceleniyor" && <span className="bg-amber-500/10 text-amber-400 text-[10px] font-bold px-2 py-1 rounded border border-amber-500/20">⏳ İnceleniyor</span>}
+                    {fb.status === "beklemede" && <span className="bg-slate-800 text-slate-400 text-[10px] font-bold px-2 py-1 rounded">Beklemede</span>}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* ---------------------------------------------
+     FIREBASE: GİRİŞ İŞLEMLERİ
   ---------------------------------------------- */
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -705,7 +822,7 @@ export default function App() {
   );
 
   /* ---------------------------------------------
-     FIREBASE: SATIN ALMA TALEBİ (PRICING)
+     FIREBASE: SATIN ALMA TALEBİ
   ---------------------------------------------- */
   const handlePurchaseRequest = async (plan) => {
     if (!currentUser) {
@@ -714,18 +831,14 @@ export default function App() {
       return;
     }
     
-    // Veritabanına kullanıcının ödeme aşamasına geçtiğini kaydet (Beklemeye al)
     await updateDoc(doc(db, "users", currentUser.id), { pendingRequest: plan });
 
-    // Linki alıp yönlendir
     const paymentUrl = PAYMENT_LINKS[plan];
     if (paymentUrl) {
-      // Ödeme sayfasını yeni bir sekmede açar
       window.open(paymentUrl, "_blank");
     } else {
       alert("Bu plan için ödeme linki henüz tanımlanmadı.");
     }
-    
     setShowPricingModal(false);
   };
 
@@ -742,7 +855,7 @@ export default function App() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-          {/* Paket 1: 1 Ay */}
+          {/* Paket 1 */}
           <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 md:p-8 flex flex-col hover:border-orange-500/30 transition-all relative">
             <h3 className="text-xl font-bold text-white mb-2">Aylık Bilet</h3>
             <p className="text-slate-500 text-sm mb-6 h-10">Kısa süreli deneme ve tek bir oyun gecesi için ideal.</p>
@@ -756,7 +869,7 @@ export default function App() {
             <button onClick={() => handlePurchaseRequest("1A")} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Seç ve Başla</button>
           </div>
 
-          {/* Paket 2: 6 Ay */}
+          {/* Paket 2 */}
           <div className="bg-gradient-to-b from-orange-900/40 to-slate-950 border-2 border-orange-500 rounded-3xl p-6 md:p-8 flex flex-col transform lg:-translate-y-4 shadow-2xl shadow-orange-500/20 relative">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-orange-500 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-lg">EN POPÜLER</div>
             <h3 className="text-2xl font-bold text-white mb-2">Sezonluk Kart</h3>
@@ -772,7 +885,7 @@ export default function App() {
             <button onClick={() => handlePurchaseRequest("6A")} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl transition-all shadow-lg shadow-orange-600/30 transform hover:scale-[1.02]">6 Ay İçin Satın Al</button>
           </div>
 
-          {/* Paket 3: 12 Ay */}
+          {/* Paket 3 */}
           <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 md:p-8 flex flex-col hover:border-amber-500/50 transition-all relative">
             <div className="absolute top-5 right-5 bg-amber-500/10 text-amber-500 px-2.5 py-1 rounded text-xs font-black border border-amber-500/20">%36 İNDİRİM</div>
             <h3 className="text-xl font-bold text-white mb-2">1 Yıllık Efsane</h3>
@@ -787,10 +900,6 @@ export default function App() {
             <button onClick={() => handlePurchaseRequest("1Y")} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-amber-500/30 hover:border-amber-500">Kalıcı Destekçi Ol</button>
           </div>
         </div>
-
-        {!currentUser && (
-          <div className="mt-8 text-center text-sm text-slate-400">Satın almak için önce <button className="text-orange-500 font-bold hover:text-orange-400" onClick={() => { setShowPricingModal(false); setShowLoginModal(true); }}>giriş yap</button>.</div>
-        )}
       </div>
     </div>
   );
@@ -809,6 +918,7 @@ export default function App() {
     await addDoc(collection(db, "feedbacks"), {
       userId: currentUser.id,
       user: currentUser.name,
+      email: currentUser.email, // Admin iletişimi için
       game: newFeedbackGame,
       text: newFeedbackText,
       status: "beklemede",
@@ -871,6 +981,7 @@ export default function App() {
               <div className="mt-auto pt-4 border-t border-slate-800/50 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500">Geliştirici Durumu:</span>
                 {fb.status === "onaylandi" && <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded border border-emerald-500/20">✅ Onaylandı</span>}
+                {fb.status === "reddedildi" && <span className="bg-red-500/10 text-red-400 text-[10px] font-bold px-2 py-1 rounded border border-red-500/20">❌ İptal Edildi</span>}
                 {fb.status === "inceleniyor" && <span className="bg-amber-500/10 text-amber-400 text-[10px] font-bold px-2 py-1 rounded border border-amber-500/20">⏳ İnceleniyor</span>}
                 {fb.status === "beklemede" && <span className="bg-slate-800 text-slate-400 text-[10px] font-bold px-2 py-1 rounded">Beklemede</span>}
               </div>
@@ -882,29 +993,28 @@ export default function App() {
   );
 
   /* ---------------------------------------------
-     FIREBASE: ADMIN DASHBOARD İŞLEMLERİ
+     FIREBASE: ADMIN DASHBOARD (YENİLENMİŞ)
   ---------------------------------------------- */
   const renderAdminDashboard = () => {
+    // KULLANICI YÖNETİMİ
     const approvePremiumTime = async (userId, planCode) => {
       let monthsToAdd = 1;
       if (planCode === "6A") monthsToAdd = 6;
       if (planCode === "1Y") monthsToAdd = 12;
-
       const u = usersList.find(user => user.id === userId);
       if(!u) return;
-
       const base = u.premiumEndDate && new Date(u.premiumEndDate) > new Date() ? new Date(u.premiumEndDate) : new Date();
       base.setMonth(base.getMonth() + monthsToAdd);
-
-      // Sadece veritabanını güncelliyoruz, dinleyici ekranı otomatik güncelleyecek
-      await updateDoc(doc(db, "users", userId), {
-        premiumEndDate: base.toISOString(),
-        pendingRequest: null,
-      });
+      await updateDoc(doc(db, "users", userId), { premiumEndDate: base.toISOString(), pendingRequest: null });
     };
 
     const revokePremium = async (userId) => {
       await updateDoc(doc(db, "users", userId), { premiumEndDate: null, pendingRequest: null });
+    };
+
+    // FİKİR YÖNETİMİ
+    const changeFeedbackStatus = async (id, newStatus) => {
+      await updateDoc(doc(db, "feedbacks", id), { status: newStatus });
     };
 
     return (
@@ -913,80 +1023,115 @@ export default function App() {
           <div>
             <div className="flex items-center gap-3 mb-2">
               <Lock className="w-6 h-6 text-amber-500" />
-              <h2 className="text-2xl md:text-3xl font-bold text-white">Yönetici Paneli (Firebase Canlı)</h2>
+              <h2 className="text-2xl md:text-3xl font-bold text-white">Yönetici Paneli</h2>
             </div>
-            <p className="text-amber-200/60 text-sm">Tüm veriler Firestore üzerinden canlı olarak okunur ve yazılır.</p>
+            <p className="text-amber-200/60 text-sm">Canlı Veritabanı Kontrol Merkezi</p>
+          </div>
+          <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1">
+            <button onClick={() => setAdminTab("users")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "users" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Kullanıcılar</button>
+            <button onClick={() => setAdminTab("feedbacks")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "feedbacks" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Fikir Kutusu</button>
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 gap-3">
-            <h3 className="font-bold text-white">Kayıtlı Kullanıcılar</h3>
-            <div className="flex items-center bg-slate-900 border border-slate-800 rounded-full px-3 py-1.5">
-              <Search className="w-4 h-4 text-slate-500" />
-              <input value={adminSearch} onChange={(e) => setAdminSearch(e.target.value)} type="text" placeholder="İsim/E-posta ara..." className="bg-transparent border-none outline-none text-xs text-white ml-2 w-36 md:w-52" />
+        {/* KULLANICILAR SEKMESİ */}
+        {adminTab === "users" && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden animate-in fade-in">
+            <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 gap-3">
+              <h3 className="font-bold text-white">Kayıtlı Kullanıcılar</h3>
+              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-full px-3 py-1.5">
+                <Search className="w-4 h-4 text-slate-500" />
+                <input value={adminSearch} onChange={(e) => setAdminSearch(e.target.value)} type="text" placeholder="İsim/E-posta ara..." className="bg-transparent border-none outline-none text-xs text-white ml-2 w-36 md:w-52" />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-400 text-xs uppercase border-b border-slate-800">
+                    <th className="px-6 py-4 font-semibold">Kullanıcı</th>
+                    <th className="px-6 py-4 font-semibold">E-posta</th>
+                    <th className="px-6 py-4 font-semibold text-center">Durum</th>
+                    <th className="px-6 py-4 font-semibold text-right">İşlem</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {sortedUsers.map((user) => {
+                    const isPremium = isUserPremium(user);
+                    const remDays = getRemainingDays(user.premiumEndDate);
+                    const isPending = user.pendingRequest !== null;
+                    return (
+                      <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
+                        <td className="px-6 py-4 text-sm font-medium text-white">{user.name}</td>
+                        <td className="px-6 py-4 text-sm text-slate-400">{user.email}</td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            {isPending ? (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({user.pendingRequest})</span>
+                            ) : (
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${isPremium ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : remDays !== null && remDays <= 0 ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                                {isPremium ? "AKTİF" : remDays !== null && remDays <= 0 ? "SÜRESİ DOLDU" : "STANDART"}
+                              </span>
+                            )}
+                            {isPremium && !isPending && <span className="text-[10px] text-slate-500">{remDays} gün kaldı</span>}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5 md:gap-2">
+                            {isPending ? (
+                              <>
+                                <button onClick={() => approvePremiumTime(user.id, user.pendingRequest)} className={`text-[10px] md:text-xs font-bold px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-lg shadow-emerald-500/20`}>Onayla</button>
+                                <button onClick={() => revokePremium(user.id)} className={`text-[10px] md:text-xs font-bold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors`}>Reddet</button>
+                              </>
+                            ) : (
+                              <>
+                                {isPremium && <button onClick={() => revokePremium(user.id)} className={`text-[10px] md:text-xs font-bold px-2 py-1.5 rounded-lg transition-colors bg-red-500/10 text-red-400 hover:bg-red-500/20`} title="Aboneliği İptal Et"><ShieldAlert className="w-3 h-3 md:w-4 md:h-4" /></button>}
+                                <button onClick={() => approvePremiumTime(user.id, "1A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors`} title="1 Ay Manuel Ekle">+1A</button>
+                                <button onClick={() => approvePremiumTime(user.id, "6A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-orange-900/50 hover:bg-orange-800/50 text-orange-300 transition-colors`} title="6 Ay Manuel Ekle">+6A</button>
+                                <button onClick={() => approvePremiumTime(user.id, "1Y")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-amber-900/50 hover:bg-amber-800/50 text-amber-300 transition-colors`} title="1 Yıl Manuel Ekle">+1Y</button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
+        )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-900 text-slate-400 text-xs uppercase border-b border-slate-800">
-                  <th className="px-6 py-4 font-semibold">Kullanıcı</th>
-                  <th className="px-6 py-4 font-semibold">E-posta</th>
-                  <th className="px-6 py-4 font-semibold text-center">Durum</th>
-                  <th className="px-6 py-4 font-semibold text-right">İşlem</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                {sortedUsers.map((user) => {
-                  const isPremium = isUserPremium(user);
-                  const remDays = getRemainingDays(user.premiumEndDate);
-                  const isPending = user.pendingRequest !== null;
-
-                  return (
-                    <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
-                      <td className="px-6 py-4 text-sm font-medium text-white">{user.name}</td>
-                      <td className="px-6 py-4 text-sm text-slate-400">{user.email}</td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          {isPending ? (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME ONAYI BEKLİYOR ({user.pendingRequest})</span>
-                          ) : (
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${isPremium ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : remDays !== null && remDays <= 0 ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
-                              {isPremium ? "AKTİF" : remDays !== null && remDays <= 0 ? "SÜRESİ DOLDU" : "STANDART"}
-                            </span>
-                          )}
-                          {isPremium && !isPending && <span className="text-[10px] text-slate-500">{remDays} gün kaldı</span>}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5 md:gap-2">
-                          {isPending ? (
-                            <>
-                              <button onClick={() => approvePremiumTime(user.id, user.pendingRequest)} className={`text-[10px] md:text-xs font-bold px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-lg shadow-emerald-500/20 ${focusStyles}`}>Onayla</button>
-                              <button onClick={() => revokePremium(user.id)} className={`text-[10px] md:text-xs font-bold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors ${focusStyles}`}>Reddet</button>
-                            </>
-                          ) : (
-                            <>
-                              {isPremium ? (
-                                <button onClick={() => revokePremium(user.id)} className={`text-[10px] md:text-xs font-bold px-2 py-1.5 rounded-lg transition-colors bg-red-500/10 text-red-400 hover:bg-red-500/20 ${focusStyles}`} title="Aboneliği İptal Et"><ShieldAlert className="w-3 h-3 md:w-4 md:h-4" /></button>
-                              ) : null}
-                              <button onClick={() => approvePremiumTime(user.id, "1A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors ${focusStyles}`} title="1 Ay Manuel Ekle">+1A</button>
-                              <button onClick={() => approvePremiumTime(user.id, "6A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-orange-900/50 hover:bg-orange-800/50 text-orange-300 transition-colors ${focusStyles}`} title="6 Ay Manuel Ekle">+6A</button>
-                              <button onClick={() => approvePremiumTime(user.id, "1Y")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-amber-900/50 hover:bg-amber-800/50 text-amber-300 transition-colors ${focusStyles}`} title="1 Yıl Manuel Ekle">+1Y</button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {!sortedUsers.length && <div className="p-6 text-center text-sm text-slate-400">Kullanıcı bulunamadı.</div>}
+        {/* FİKİRLER SEKMESİ */}
+        {adminTab === "feedbacks" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
+            {feedbacks.map((fb) => (
+              <div key={fb.id} className={`bg-slate-900 border rounded-2xl p-6 flex flex-col ${fb.status === "beklemede" ? "border-orange-500/50 shadow-lg shadow-orange-500/10" : "border-slate-800"}`}>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded inline-block mb-2">{fb.game}</div>
+                    <div className="text-sm font-semibold text-white flex items-center gap-1.5">
+                      <User className="w-4 h-4 text-slate-500" /> {fb.user}
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-500">{fb.date}</div>
+                </div>
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-slate-300 text-sm mb-6 flex-1 italic">
+                  "{fb.text}"
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 justify-between items-center border-t border-slate-800/50 pt-4">
+                  <a href={`mailto:${fb.email}?subject=Forge&Play Fikir Kutusu Bildirimi&body=Merhaba ${fb.user}, fikriniz incelendi...`} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-2 rounded-lg w-full sm:w-auto justify-center transition-colors">
+                    <Mail className="w-4 h-4" /> Mail At
+                  </a>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button onClick={() => changeFeedbackStatus(fb.id, "inceleniyor")} className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition-colors ${fb.status === "inceleniyor" ? "bg-amber-500 text-slate-900" : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20"}`}>İncelemeye Al</button>
+                    <button onClick={() => changeFeedbackStatus(fb.id, "onaylandi")} className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition-colors ${fb.status === "onaylandi" ? "bg-emerald-500 text-slate-900" : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20"}`}>Onayla</button>
+                    <button onClick={() => changeFeedbackStatus(fb.id, "reddedildi")} className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition-colors ${fb.status === "reddedildi" ? "bg-red-500 text-slate-900" : "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"}`}>Reddet</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {feedbacks.length === 0 && <div className="col-span-full p-10 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">Hiç fikir gelmemiş.</div>}
           </div>
-        </div>
+        )}
       </div>
     );
   };
@@ -1027,6 +1172,12 @@ export default function App() {
                       </div>
                       <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{game.title}</h1>
                       <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{game.description}</p>
+                      
+                      {/* Canlı Oyuncu Sayısı */}
+                      <div className="pt-2">
+                        <LivePlayerCount base={game.basePlayers} />
+                      </div>
+
                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
                         <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); if (game.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); return; } openGame(game); }}>
                           <Play className="w-5 h-5 fill-current" />
@@ -1074,9 +1225,11 @@ export default function App() {
                   </div>
                   <div className="p-4 md:p-6 flex-1 flex flex-col z-10 bg-slate-900">
                     <p className="text-slate-400 text-xs md:text-sm line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 flex-1">{game.description}</p>
+                    
+                    <LivePlayerCount base={game.basePlayers} />
+
                     <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-800">
                       <div className="flex flex-col">
-                        <span className="text-[10px] md:text-xs text-slate-500 mb-0.5">{game.players}</span>
                         <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
                       </div>
                       <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
@@ -1094,7 +1247,7 @@ export default function App() {
   };
 
   /* ---------------------------------------------
-     EKSİK OLAN KÜTÜPHANE VE LABORATUVAR EKRANLARI EKLENDİ
+     KÜTÜPHANE VE LAB EKRANLARI
   ---------------------------------------------- */
   const renderLibrary = () => (
     <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
@@ -1125,7 +1278,8 @@ export default function App() {
               <div className="flex items-start justify-between mb-8">
                 <div>
                   <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{selectedLibraryGame.title}</h2>
-                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed">{selectedLibraryGame.description}</p>
+                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">{selectedLibraryGame.description}</p>
+                  <LivePlayerCount base={selectedLibraryGame.basePlayers} />
                 </div>
                 <div className={`hidden md:flex w-20 h-20 rounded-2xl items-center justify-center shrink-0 bg-gradient-to-br ${selectedLibraryGame.gradient} shadow-xl`}>
                   <GameIcon iconKey={selectedLibraryGame.iconKey} className="w-10 h-10 text-white" />
@@ -1191,7 +1345,7 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
       {renderNavbar()}
       {showLoginModal && renderLoginModal()}
       {showPricingModal && renderPricingModal()}
@@ -1199,10 +1353,11 @@ export default function App() {
         {activeTab === "store" && renderStore()}
         {activeTab === "library" && renderLibrary()}
         {activeTab === "lab" && renderLab()}
+        {activeTab === "profile" && renderProfile()}
         {activeTab === "feedback" && renderFeedback()}
         {activeTab === "admin" && currentUser?.role === "admin" && renderAdminDashboard()}
       </main>
-      <footer className="hidden md:block border-t border-slate-800 bg-slate-950 py-12 mt-auto">
+      <footer className="hidden md:block border-t border-slate-800 bg-slate-950 py-12 mt-auto w-full">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between text-slate-500 text-sm">
           <div className="flex items-center gap-3 mb-4 md:mb-0 font-bold">
             <img src={LOGO_URL} alt="Forge&Play" className="w-6 h-6 object-contain" />
