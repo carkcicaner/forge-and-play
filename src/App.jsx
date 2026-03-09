@@ -222,6 +222,34 @@ const BAD_WORDS = [
 ];
 
 /* ---------------------------------------------
+   YARDIMCI (HELPER) FONKSİYONLAR - GÜÇLENDİRİLDİ
+---------------------------------------------- */
+
+// KESİN ADMİN KONTROLÜ - Veritabanındaki değere bakılmaksızın e-posta adresinden yetkiyi onaylar.
+const isUserAdmin = (user) => {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  if (user.email) {
+    const userEmail = user.email.toLowerCase().trim();
+    return ADMIN_EMAILS.some(adminEmail => adminEmail.toLowerCase().trim() === userEmail);
+  }
+  return false;
+};
+
+const isUserPremium = (user) => {
+  if (!user) return false;
+  if (isUserAdmin(user)) return true; // Adminler doğal olarak premium'dur
+  if (!user.premiumEndDate) return false;
+  return new Date(user.premiumEndDate) > new Date();
+};
+
+const getRemainingDays = (dateString) => {
+  if (!dateString) return null;
+  const diffTime = new Date(dateString) - new Date();
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+/* ---------------------------------------------
    ICON MAP
 ---------------------------------------------- */
 function GameIcon({ iconKey, className }) {
@@ -328,6 +356,8 @@ export default function App() {
     return list.filter((u) => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
   }, [usersList, adminSearch]);
 
+  const isAdmin = isUserAdmin(currentUser);
+
   /* ---------------------------------------------
      FIREBASE: KULLANICI (AUTH) DİNLEYİCİSİ VE OTOMATİK ADMİN ATAMASI
   ---------------------------------------------- */
@@ -337,8 +367,8 @@ export default function App() {
         const userRef = doc(db, "users", firebaseUser.uid);
         const unsubUser = onSnapshot(userRef, (docSnap) => {
           
-          const userEmail = firebaseUser.email?.toLowerCase() || "";
-          const isAdminEmail = ADMIN_EMAILS.some(email => email.toLowerCase() === userEmail);
+          const userEmail = firebaseUser.email?.toLowerCase().trim() || "";
+          const isAdminEmail = ADMIN_EMAILS.some(email => email.toLowerCase().trim() === userEmail);
 
           if (docSnap.exists()) {
             const userData = docSnap.data();
@@ -357,7 +387,8 @@ export default function App() {
             }
 
             if (needsUpdate) {
-              updateDoc(userRef, updates);
+              // Hata yakalama eklendi (yetki sorunlarında çökmemesi için)
+              updateDoc(userRef, updates).catch(err => console.error("Update error:", err));
               Object.assign(userData, updates);
             }
 
@@ -375,7 +406,7 @@ export default function App() {
               playCount: 0,
               paymentCode: paymentCode
             };
-            setDoc(userRef, newUser);
+            setDoc(userRef, newUser).catch(err => console.error("Set error:", err));
             setCurrentUser({ id: firebaseUser.uid, ...newUser });
           }
           setAuthLoading(false);
@@ -400,7 +431,8 @@ export default function App() {
     });
 
     let unsubUsers = () => {};
-    if (currentUser?.role === "admin") {
+    // Burada currentUser.role yerine doğrudan güçlü isUserAdmin fonksiyonumuzu kullanıyoruz
+    if (isAdmin) {
       unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
         const uList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setUsersList(uList);
@@ -411,24 +443,11 @@ export default function App() {
       unsubFeedbacks();
       unsubUsers();
     };
-  }, [currentUser?.role]);
+  }, [isAdmin]);
 
   /* ---------------------------------------------
-     HELPERS
+     DİĞER YARDIMCI İŞLEMLER
   ---------------------------------------------- */
-  const isUserPremium = (user) => {
-    if (!user) return false;
-    if (user.role === "admin") return true;
-    if (!user.premiumEndDate) return false;
-    return new Date(user.premiumEndDate) > new Date();
-  };
-
-  const getRemainingDays = (dateString) => {
-    if (!dateString) return null;
-    const diffTime = new Date(dateString) - new Date();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-
   const openGame = async (game) => {
     if (!game) return;
     setPlayingGame(game);
@@ -479,7 +498,7 @@ export default function App() {
   };
 
   /* ---------------------------------------------
-     FIREBASE: GİRİŞ İŞLEMLERİ (YENİDEN EKLENDİ)
+     FIREBASE: GİRİŞ İŞLEMLERİ
   ---------------------------------------------- */
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -619,7 +638,7 @@ export default function App() {
               </button>
             </div>
 
-            {currentUser?.role === "admin" && (
+            {isAdmin && (
               <button onClick={() => setActiveTab("admin")} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-sm transition-all ml-2 border border-slate-700 ${focusStyles} ${activeTab === "admin" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-white hover:bg-slate-800"}`}>
                 <Lock className="w-4 h-4" /> Admin
               </button>
@@ -642,7 +661,7 @@ export default function App() {
             <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
               <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
                 <span className="text-sm font-bold text-white leading-tight">{currentUser.name || "Kullanıcı"}</span>
-                {currentUser.role === "admin" ? (
+                {isAdmin ? (
                   <span className="text-[10px] font-bold tracking-wide uppercase text-amber-400">Yönetici</span>
                 ) : currentUser.pendingRequest ? (
                   <span className="text-[10px] font-bold tracking-wide uppercase text-amber-500 animate-pulse">Onay Bekleniyor</span>
@@ -654,7 +673,7 @@ export default function App() {
                   <span className="text-[10px] font-bold tracking-wide uppercase text-slate-500">Standart Profil</span>
                 )}
               </div>
-              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && currentUser.role !== "admin" ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
+              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
                 {String(currentUser.name || "U").charAt(0).toUpperCase()}
               </div>
               <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
@@ -687,12 +706,18 @@ export default function App() {
             <span className="text-[10px] font-bold">{tab.label}</span>
           </button>
         ))}
+        {isAdmin && (
+          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
+            <Lock className="w-6 h-6 mb-1" />
+            <span className="text-[10px] font-bold">Admin</span>
+          </button>
+        )}
       </div>
     </div>
   );
 
   /* ---------------------------------------------
-     EKSİK: LOGIN MODAL (YENİDEN EKLENDİ)
+     LOGIN MODAL
   ---------------------------------------------- */
   const renderLoginModal = () => (
     <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
@@ -986,7 +1011,7 @@ export default function App() {
   );
 
   /* ---------------------------------------------
-     STORE EKRANI (YENİDEN EKLENDİ)
+     STORE EKRANI 
   ---------------------------------------------- */
   const renderStore = () => {
     const slideList = featuredGames;
@@ -1095,7 +1120,7 @@ export default function App() {
   };
 
   /* ---------------------------------------------
-     KÜTÜPHANE EKRANI (YENİDEN EKLENDİ)
+     KÜTÜPHANE EKRANI 
   ---------------------------------------------- */
   const renderLibrary = () => (
     <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
@@ -1158,7 +1183,7 @@ export default function App() {
   );
 
   /* ---------------------------------------------
-     LAB EKRANI (YENİDEN EKLENDİ)
+     LAB EKRANI
   ---------------------------------------------- */
   const renderLab = () => (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
@@ -1204,12 +1229,9 @@ export default function App() {
     const remDays = getRemainingDays(currentUser.premiumEndDate);
     const userFeedbacks = feedbacks.filter(fb => fb.userId === currentUser.id);
 
-    // ==========================================
-    // ROZET HESAPLAMA SİSTEMİ (OTOMATİK BAŞARIMLAR)
-    // ==========================================
     const userBadges = [];
     
-    if (currentUser.role === "admin") {
+    if (isAdmin) {
       userBadges.push({ id: 'admin', title: 'Platform Yöneticisi', desc: 'Sistemin koruyucusu.', icon: ShieldAlert, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' });
     }
     
@@ -1257,7 +1279,7 @@ export default function App() {
                     Standart Üye
                   </span>
                 )}
-                {currentUser.role === "admin" && (
+                {isAdmin && (
                   <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                     <Lock className="w-4 h-4 mr-2" /> Yönetici
                   </span>
@@ -1287,7 +1309,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* KAZANILAN ROZETLER BÖLÜMÜ */}
           <div className="mt-8 pt-8 border-t border-slate-800">
             <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
               <Star className="w-4 h-4 text-orange-500" /> Kazanılan Rozetler
@@ -1341,106 +1362,6 @@ export default function App() {
       </div>
     );
   };
-
-  /* ---------------------------------------------
-     FIREBASE: FEEDBACK (FİKİR KUTUSU)
-  ---------------------------------------------- */
-  const handleFeedbackSubmit = async (e) => {
-    e.preventDefault();
-    if (!currentUser) {
-      setShowLoginModal(true);
-      return;
-    }
-    const text = newFeedbackText.trim();
-    if (text === "") return;
-
-    const lowerText = text.toLowerCase();
-    const hasBadWord = BAD_WORDS.some(badWord => {
-      const regex = new RegExp(`\\b${badWord}\\b`, 'i');
-      return regex.test(lowerText);
-    });
-
-    if (hasBadWord) {
-      alert("⚠️ Gönderiniz uygunsuz kelimeler içerdiği için reddedildi. Lütfen topluluk kurallarına uyunuz.");
-      return;
-    }
-
-    await addDoc(collection(db, "feedbacks"), {
-      userId: currentUser.id,
-      user: currentUser.name || "Kullanıcı",
-      email: currentUser.email || "",
-      game: newFeedbackGame,
-      text: text,
-      status: "beklemede",
-      date: new Date().toLocaleDateString('tr-TR'),
-      createdAt: Date.now()
-    });
-
-    setNewFeedbackText("");
-    alert("Fikrin buluta kaydedildi ve geliştiriciye iletildi!");
-  };
-
-  const renderFeedback = () => (
-    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      <div className="bg-gradient-to-r from-orange-900/30 to-slate-900 border border-orange-900/50 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center gap-8">
-        <div className="flex-1 space-y-4">
-          <div className="flex items-center gap-3">
-            <Lightbulb className="w-8 h-8 md:w-10 md:h-10 text-orange-500" />
-            <h2 className="text-2xl md:text-4xl font-black text-white">Oyuncuların Sesi</h2>
-          </div>
-          <p className="text-sm md:text-base text-slate-300 leading-relaxed max-w-2xl">
-            Forge&Play oyunlarını birlikte geliştiriyoruz! Aklına gelen fikri yaz, anında veritabanımıza kaydolsun.
-          </p>
-        </div>
-
-        <div className="w-full md:w-[400px] bg-slate-950 rounded-xl p-5 md:p-6 border border-slate-800 shadow-2xl shrink-0">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><MessageSquarePlus className="w-5 h-5 text-orange-500" /> Bir Fikir Gönder</h3>
-          <form onSubmit={handleFeedbackSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hangi Oyun İçin?</label>
-              <select value={newFeedbackGame} onChange={(e) => setNewFeedbackGame(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500">
-                {GAMES.map((g) => <option key={g.id} value={g.title}>{g.title}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fikriniz Nedir?</label>
-              <textarea required rows="3" value={newFeedbackText} onChange={(e) => setNewFeedbackText(e.target.value)} placeholder="Örn: Şu özellik gelirse çok iyi olur..." className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-orange-500 resize-none" />
-            </div>
-            <button type="submit" className={`w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-lg transition-colors ${focusStyles}`}>
-              <Send className="w-4 h-4" /> Gönder
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-800 pb-3">Canlı Topluluk Fikirleri</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          {feedbacks.map((fb) => (
-            <div key={fb.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 md:p-6 flex flex-col h-full hover:border-slate-700 transition-colors">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="text-xs font-bold text-orange-500 mb-1">{fb.game}</div>
-                  <div className="text-sm font-semibold text-white flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-slate-500" /> {fb.user || "Anonim"}
-                  </div>
-                </div>
-                <div className="text-[10px] text-slate-500">{fb.date}</div>
-              </div>
-              <p className="text-sm text-slate-300 mb-6 flex-1 italic border-l-2 border-slate-700 pl-3">"{fb.text}"</p>
-              <div className="mt-auto pt-4 border-t border-slate-800/50 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500">Geliştirici Durumu:</span>
-                {fb.status === "onaylandi" && <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded border border-emerald-500/20">✅ Onaylandı</span>}
-                {fb.status === "reddedildi" && <span className="bg-red-500/10 text-red-400 text-[10px] font-bold px-2 py-1 rounded border border-red-500/20">❌ İptal Edildi</span>}
-                {fb.status === "inceleniyor" && <span className="bg-amber-500/10 text-amber-400 text-[10px] font-bold px-2 py-1 rounded border border-amber-500/20">⏳ İnceleniyor</span>}
-                {fb.status === "beklemede" && <span className="bg-slate-800 text-slate-400 text-[10px] font-bold px-2 py-1 rounded">Beklemede</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 
   /* ---------------------------------------------
      FIREBASE: ADMIN DASHBOARD
@@ -1612,7 +1533,7 @@ export default function App() {
         {activeTab === "lab" && renderLab()}
         {activeTab === "profile" && renderProfile()}
         {activeTab === "feedback" && renderFeedback()}
-        {activeTab === "admin" && currentUser?.role === "admin" && renderAdminDashboard()}
+        {activeTab === "admin" && isAdmin && renderAdminDashboard()}
       </main>
       <footer className="hidden md:block border-t border-slate-800 bg-slate-950 py-12 mt-auto w-full">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between text-slate-500 text-sm">
