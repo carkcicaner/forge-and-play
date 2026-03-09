@@ -336,30 +336,39 @@ export default function App() {
       if (firebaseUser) {
         const userRef = doc(db, "users", firebaseUser.uid);
         const unsubUser = onSnapshot(userRef, (docSnap) => {
-          const isAdminEmail = ADMIN_EMAILS.includes(firebaseUser.email);
+          
+          const userEmail = firebaseUser.email?.toLowerCase() || "";
+          const isAdminEmail = ADMIN_EMAILS.some(email => email.toLowerCase() === userEmail);
 
           if (docSnap.exists()) {
             const userData = docSnap.data();
+            let needsUpdate = false;
+            const updates = {};
             
             if (isAdminEmail && userData.role !== "admin") {
-              updateDoc(userRef, { 
-                role: "admin", 
-                premiumEndDate: new Date("2099-01-01").toISOString() 
-              });
+              updates.role = "admin";
+              updates.premiumEndDate = new Date("2099-01-01").toISOString();
+              needsUpdate = true;
             }
             
             if (!userData.paymentCode) {
-               const code = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
-               updateDoc(userRef, { paymentCode: code });
-               userData.paymentCode = code;
+               updates.paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
+               needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+              updateDoc(userRef, updates);
+              Object.assign(userData, updates);
             }
 
             setCurrentUser({ id: firebaseUser.uid, ...userData });
           } else {
             const paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
+            const safeName = firebaseUser.displayName || (userEmail ? userEmail.split("@")[0] : "Oyuncu");
+
             const newUser = {
-              name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
-              email: firebaseUser.email,
+              name: safeName,
+              email: userEmail,
               role: isAdminEmail ? "admin" : "user",
               premiumEndDate: isAdminEmail ? new Date("2099-01-01").toISOString() : null,
               pendingRequest: null,
@@ -466,6 +475,43 @@ export default function App() {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       openGame(game);
+    }
+  };
+
+  /* ---------------------------------------------
+     FIREBASE: GİRİŞ İŞLEMLERİ (YENİDEN EKLENDİ)
+  ---------------------------------------------- */
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    const email = emailInput.trim().toLowerCase();
+    if (!email || !passwordInput) return;
+
+    try {
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, email, passwordInput);
+      } else {
+        await signInWithEmailAndPassword(auth, email, passwordInput);
+      }
+      setShowLoginModal(false);
+      setPasswordInput("");
+    } catch (error) {
+      console.error(error);
+      if (error.code === 'auth/email-already-in-use') setAuthError("Bu e-posta zaten kayıtlı!");
+      else if (error.code === 'auth/wrong-password') setAuthError("Hatalı şifre!");
+      else if (error.code === 'auth/user-not-found') setAuthError("Kullanıcı bulunamadı!");
+      else setAuthError("Bir hata oluştu: " + error.message);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setAuthError("");
+    try {
+      await signInWithPopup(auth, googleProvider);
+      setShowLoginModal(false);
+    } catch (error) {
+      console.error(error);
+      setAuthError("Google ile giriş yapılamadı.");
     }
   };
 
@@ -595,7 +641,7 @@ export default function App() {
           ) : currentUser ? (
             <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
               <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
-                <span className="text-sm font-bold text-white leading-tight">{currentUser.name}</span>
+                <span className="text-sm font-bold text-white leading-tight">{currentUser.name || "Kullanıcı"}</span>
                 {currentUser.role === "admin" ? (
                   <span className="text-[10px] font-bold tracking-wide uppercase text-amber-400">Yönetici</span>
                 ) : currentUser.pendingRequest ? (
@@ -609,7 +655,7 @@ export default function App() {
                 )}
               </div>
               <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && currentUser.role !== "admin" ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
-                {currentUser.name?.charAt(0)?.toUpperCase()}
+                {String(currentUser.name || "U").charAt(0).toUpperCase()}
               </div>
               <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
                 <LogOut className="w-4 h-4 lg:w-5 lg:h-5" />
@@ -646,211 +692,65 @@ export default function App() {
   );
 
   /* ---------------------------------------------
-     STORE EKRANI
+     EKSİK: LOGIN MODAL (YENİDEN EKLENDİ)
   ---------------------------------------------- */
-  const renderStore = () => {
-    const slideList = featuredGames;
-    return (
-      <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
-        <section className={`relative group cursor-pointer rounded-3xl ${focusStyles} overflow-hidden h-[450px] md:h-[500px] lg:h-[550px] shadow-2xl shrink-0`} tabIndex={0} onClick={() => slideList.length && openGame(slideList[currentSlide])} onKeyDown={(e) => slideList.length && handleGameKeypress(e, slideList[currentSlide])}>
-          {!slideList.length ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-900 border border-slate-800 rounded-3xl">
-              <div className="text-center space-y-3 p-6">
-                <Sparkles className="w-12 h-12 text-slate-600 mx-auto" />
-                <div className="text-white font-black text-2xl">Öne çıkan içerik yok</div>
-              </div>
-            </div>
-          ) : (
-            <>
-              {slideList.map((game, idx) => (
-                <div key={game.id} className={`absolute inset-0 transition-all duration-1000 ease-in-out ${currentSlide === idx ? "opacity-100 z-10 scale-100" : "opacity-0 z-0 scale-105 pointer-events-none"}`}>
-                  <div className={`absolute inset-0 bg-gradient-to-r ${game.gradient} opacity-95 z-0`} />
-                  {game.image && (
-                    <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-                      <img src={game.image} alt={game.title} className="w-full h-full object-cover object-center opacity-40 mix-blend-overlay" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-90"></div>
-                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/70 to-transparent opacity-80"></div>
-                    </div>
-                  )}
+  const renderLoginModal = () => (
+    <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative">
+        <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+          <X className="w-6 h-6" />
+        </button>
 
-                  <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center lg:justify-between p-6 md:p-10 lg:p-14 h-full z-10">
-                    <div className="w-full lg:max-w-2xl space-y-4 md:space-y-5">
-                      <div className="flex flex-wrap gap-2">
-                        <span className={`${currentSlide === idx ? "animate-pulse" : ""} bg-red-500/20 text-red-400 border border-red-500/30 text-xs md:text-sm font-bold px-3 py-1 rounded-full backdrop-blur-sm`}>Öne Çıkan</span>
-                        {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
-                      </div>
-                      <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{game.title}</h1>
-                      <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{game.description}</p>
-                      
-                      <div className="pt-2">
-                        <LivePlayerCount base={game.basePlayers} />
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
-                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); if (game.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); return; } openGame(game); }}>
-                          <Play className="w-5 h-5 fill-current" />
-                          {game.requiresPremium && !isUserPremium(currentUser) ? "Premium Al" : game.id === "monopoly-bank" ? "Sistemi Başlat" : "Hemen Oyna"}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="hidden lg:flex items-center justify-center w-[220px] h-[220px] xl:w-[260px] xl:h-[260px] shrink-0 bg-slate-950/80 rounded-full border-4 border-slate-800/50 backdrop-blur-md shadow-2xl transform group-hover:scale-105 transition-transform duration-500">
-                      <GameIcon iconKey={game.iconKey} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
-                {slideList.map((_, idx) => (
-                  <button key={idx} onClick={(e) => { e.stopPropagation(); setCurrentSlide(idx); }} className={`h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? "w-8 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]" : "w-2 bg-slate-500/50 hover:bg-slate-400"}`} />
-                ))}
-              </div>
-            </>
-          )}
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-4 md:mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><Sparkles className="w-5 h-5 md:w-6 md:h-6 text-orange-500" /> Platform Projeleri</h2>
-            <div className="md:hidden flex items-center bg-slate-900/60 border border-slate-800 rounded-full px-3 py-2">
-              <Search className="w-4 h-4 text-slate-500" />
-              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-40" />
-            </div>
+        <div className="text-center mb-6">
+          <div className="w-20 h-20 bg-slate-950 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-800 shadow-lg shadow-orange-500/20 p-2">
+            <img src={LOGO_URL} alt="Forge&Play Logo" className="w-full h-full object-contain" />
           </div>
+          <h2 className="text-2xl font-black text-white">{isRegistering ? "Aramıza Katıl" : "Hesabına Giriş Yap"}</h2>
+          <p className="text-slate-400 text-sm mt-2">Tüm Forge&Play kütüphanene erişmek için giriş yap.</p>
+        </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-            {filteredGames.map((game) => {
-              const locked = game.requiresPremium && !isUserPremium(currentUser);
-              return (
-                <div key={game.id} tabIndex={0} onClick={() => { if (locked && game.url) { setShowPricingModal(true); return; } openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-orange-500/50 transition-all group hover:shadow-[0_0_30px_rgba(249,115,22,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
-                  <div className={`h-32 md:h-40 bg-gradient-to-br ${game.gradient} p-4 md:p-6 flex flex-col justify-between relative overflow-hidden`}>
-                    {game.image && <img src={game.image} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay group-hover:opacity-60 transition-all transform group-hover:scale-110 duration-500 z-0 pointer-events-none" />}
-                    <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity transform group-hover:scale-110 duration-500 z-10"><GameIcon iconKey={game.iconKey} className="w-12 h-12" /></div>
-                    <div className="flex justify-between items-start z-10 relative">
-                      <span className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded-full ${game.type === "live" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-sm" : "bg-amber-500/20 text-amber-400 border border-amber-500/30 backdrop-blur-sm"}`}>{game.status}</span>
-                      {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
-                    </div>
-                    <h3 className="text-xl md:text-2xl font-bold text-white z-10 drop-shadow-md relative">{game.title}</h3>
-                  </div>
-                  <div className="p-4 md:p-6 flex-1 flex flex-col z-10 bg-slate-900">
-                    <p className="text-slate-400 text-xs md:text-sm line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 flex-1">{game.description}</p>
-                    
-                    <LivePlayerCount base={game.basePlayers} />
-
-                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-800">
-                      <div className="flex flex-col">
-                        <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
-                      </div>
-                      <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
-                        {game.url ? (locked ? "Premium Al" : "Oyna") : "İncele"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+        {authError && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-xs text-center font-bold">
+            {authError}
           </div>
-        </section>
-      </div>
-    );
-  };
-
-  /* ---------------------------------------------
-     KÜTÜPHANE EKRANI
-  ---------------------------------------------- */
-  const renderLibrary = () => (
-    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
-      <div className="w-full lg:w-1/3 xl:w-1/4 space-y-4">
-        <div className="flex items-center gap-2 mb-6 text-white font-bold text-xl px-2">
-          <Library className="w-6 h-6 text-orange-500" /> Kütüphanem
-        </div>
-        <div className="space-y-2">
-          {GAMES.filter(g => g.status === "Yayında").map(game => (
-            <button
-              key={game.id}
-              onClick={() => setSelectedLibraryGame(game)}
-              className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${selectedLibraryGame?.id === game.id ? "bg-orange-600/20 border border-orange-500/50 text-white" : "bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800"}`}
-            >
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br ${game.gradient}`}>
-                <GameIcon iconKey={game.iconKey} className="w-5 h-5 text-white" />
-              </div>
-              <span className="font-semibold text-sm truncate">{game.title}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden flex flex-col min-h-[400px]">
-        {selectedLibraryGame ? (
-          <>
-            <div className={`absolute top-0 left-0 w-full h-48 bg-gradient-to-br ${selectedLibraryGame.gradient} opacity-20`} />
-            <div className="relative z-10 flex-1 flex flex-col">
-              <div className="flex items-start justify-between mb-8">
-                <div>
-                  <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{selectedLibraryGame.title}</h2>
-                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">{selectedLibraryGame.description}</p>
-                  <LivePlayerCount base={selectedLibraryGame.basePlayers} />
-                </div>
-                <div className={`hidden md:flex w-20 h-20 rounded-2xl items-center justify-center shrink-0 bg-gradient-to-br ${selectedLibraryGame.gradient} shadow-xl`}>
-                  <GameIcon iconKey={selectedLibraryGame.iconKey} className="w-10 h-10 text-white" />
-                </div>
-              </div>
-              <div className="mt-auto pt-8 border-t border-slate-800">
-                <button onClick={() => {
-                  if (selectedLibraryGame.requiresPremium && !isUserPremium(currentUser)) {
-                    setShowPricingModal(true);
-                  } else {
-                    openGame(selectedLibraryGame);
-                  }
-                }} className="w-full sm:w-auto px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
-                  <Play className="w-5 h-5" /> 
-                  {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-           <div className="flex flex-col items-center justify-center text-slate-500 h-full flex-1">
-             <Library className="w-12 h-12 mb-4 opacity-50" />
-             <p>Oynamak için sol taraftan bir oyun seçin</p>
-           </div>
         )}
-      </div>
-    </div>
-  );
 
-  /* ---------------------------------------------
-     LAB EKRANI
-  ---------------------------------------------- */
-  const renderLab = () => (
-    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 md:p-10 text-center relative overflow-hidden">
-        <FlaskConical className="w-16 h-16 text-orange-500 mx-auto mb-6 opacity-80" />
-        <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Geliştirme Laboratuvarı</h2>
-        <p className="text-slate-400 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
-          Burada geleceğin oyunlarını ve AI deneyimlerini tasarlıyoruz. Geliştirme aşamasındaki projelerimize göz at ve ilerlemeyi takip et.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {LAB_PROJECTS.map(proj => (
-          <div key={proj.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 flex flex-col hover:border-slate-700 transition-all group">
-            <div className="flex justify-between items-start mb-6">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${proj.gradient}`}>
-                <FlaskConical className="w-6 h-6 text-white opacity-80" />
-              </div>
-              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{proj.status}</span>
-            </div>
-            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{proj.title}</h3>
-            <p className="text-slate-400 text-sm mb-8 flex-1">{proj.description}</p>
-            <div>
-              <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
-                <span>Tamamlanma</span>
-                <span>%{proj.progress}</span>
-              </div>
-              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
-                <div className="bg-orange-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
-              </div>
-            </div>
+        <form onSubmit={handleLoginSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">E-Posta Adresi</label>
+            <input type="email" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} placeholder="ornek@gmail.com" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
           </div>
-        ))}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Şifre</label>
+            <input type="password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
+          </div>
+          <button type="submit" className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-orange-500/20 mt-2">
+            {isRegistering ? "Kayıt Ol ve Başla" : "Giriş Yap"}
+          </button>
+        </form>
+
+        <div className="relative flex py-5 items-center">
+          <div className="flex-grow border-t border-slate-800"></div>
+          <span className="flex-shrink-0 mx-4 text-slate-500 text-xs font-medium">veya</span>
+          <div className="flex-grow border-t border-slate-800"></div>
+        </div>
+
+        <button type="button" onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 font-bold py-3.5 rounded-xl transition-colors mb-6">
+          <svg className="w-5 h-5" viewBox="0 0 24 24">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+          </svg>
+          Google ile {isRegistering ? "Kayıt Ol" : "Giriş Yap"}
+        </button>
+
+        <p className="text-center text-sm text-slate-400">
+          {isRegistering ? "Zaten hesabın var mı?" : "Henüz hesabın yok mu?"}{" "}
+          <button onClick={() => setIsRegistering(!isRegistering)} className="text-orange-500 font-bold hover:text-orange-400 transition-colors" type="button">
+            {isRegistering ? "Giriş Yap" : "Hemen Kayıt Ol"}
+          </button>
+        </p>
       </div>
     </div>
   );
@@ -865,7 +765,6 @@ export default function App() {
       return;
     }
     
-    // Satın alım talebini Firebase'e işle
     await updateDoc(doc(db, "users", currentUser.id), { pendingRequest: plan });
 
     const paymentUrl = PAYMENT_LINKS[plan];
@@ -1087,6 +986,216 @@ export default function App() {
   );
 
   /* ---------------------------------------------
+     STORE EKRANI (YENİDEN EKLENDİ)
+  ---------------------------------------------- */
+  const renderStore = () => {
+    const slideList = featuredGames;
+    return (
+      <div className="space-y-8 md:space-y-12 animate-in fade-in duration-500">
+        <section className={`relative group cursor-pointer rounded-3xl ${focusStyles} overflow-hidden h-[450px] md:h-[500px] lg:h-[550px] shadow-2xl shrink-0`} tabIndex={0} onClick={() => slideList.length && openGame(slideList[currentSlide])} onKeyDown={(e) => slideList.length && handleGameKeypress(e, slideList[currentSlide])}>
+          {!slideList.length ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900 border border-slate-800 rounded-3xl">
+              <div className="text-center space-y-3 p-6">
+                <Sparkles className="w-12 h-12 text-slate-600 mx-auto" />
+                <div className="text-white font-black text-2xl">Öne çıkan içerik yok</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {slideList.map((game, idx) => (
+                <div key={game.id} className={`absolute inset-0 transition-all duration-1000 ease-in-out ${currentSlide === idx ? "opacity-100 z-10 scale-100" : "opacity-0 z-0 scale-105 pointer-events-none"}`}>
+                  <div className={`absolute inset-0 bg-gradient-to-r ${game.gradient} opacity-95 z-0`} />
+                  {game.image && (
+                    <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+                      <img src={game.image} alt={game.title} className="w-full h-full object-cover object-center opacity-40 mix-blend-overlay" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-90"></div>
+                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/70 to-transparent opacity-80"></div>
+                    </div>
+                  )}
+
+                  <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center lg:justify-between p-6 md:p-10 lg:p-14 h-full z-10">
+                    <div className="w-full lg:max-w-2xl space-y-4 md:space-y-5">
+                      <div className="flex flex-wrap gap-2">
+                        <span className={`${currentSlide === idx ? "animate-pulse" : ""} bg-red-500/20 text-red-400 border border-red-500/30 text-xs md:text-sm font-bold px-3 py-1 rounded-full backdrop-blur-sm`}>Öne Çıkan</span>
+                        {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
+                      </div>
+                      <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{game.title}</h1>
+                      <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{game.description}</p>
+                      
+                      <div className="pt-2">
+                        <LivePlayerCount base={game.basePlayers} />
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
+                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); if (game.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); return; } openGame(game); }}>
+                          <Play className="w-5 h-5 fill-current" />
+                          {game.requiresPremium && !isUserPremium(currentUser) ? "Premium Al" : game.id === "monopoly-bank" ? "Sistemi Başlat" : "Hemen Oyna"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="hidden lg:flex items-center justify-center w-[220px] h-[220px] xl:w-[260px] xl:h-[260px] shrink-0 bg-slate-950/80 rounded-full border-4 border-slate-800/50 backdrop-blur-md shadow-2xl transform group-hover:scale-105 transition-transform duration-500">
+                      <GameIcon iconKey={game.iconKey} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+                {slideList.map((_, idx) => (
+                  <button key={idx} onClick={(e) => { e.stopPropagation(); setCurrentSlide(idx); }} className={`h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? "w-8 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]" : "w-2 bg-slate-500/50 hover:bg-slate-400"}`} />
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><Sparkles className="w-5 h-5 md:w-6 md:h-6 text-orange-500" /> Platform Projeleri</h2>
+            <div className="md:hidden flex items-center bg-slate-900/60 border border-slate-800 rounded-full px-3 py-2">
+              <Search className="w-4 h-4 text-slate-500" />
+              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-40" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            {filteredGames.map((game) => {
+              const locked = game.requiresPremium && !isUserPremium(currentUser);
+              return (
+                <div key={game.id} tabIndex={0} onClick={() => { if (locked && game.url) { setShowPricingModal(true); return; } openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-orange-500/50 transition-all group hover:shadow-[0_0_30px_rgba(249,115,22,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
+                  <div className={`h-32 md:h-40 bg-gradient-to-br ${game.gradient} p-4 md:p-6 flex flex-col justify-between relative overflow-hidden`}>
+                    {game.image && <img src={game.image} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay group-hover:opacity-60 transition-all transform group-hover:scale-110 duration-500 z-0 pointer-events-none" />}
+                    <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity transform group-hover:scale-110 duration-500 z-10"><GameIcon iconKey={game.iconKey} className="w-12 h-12" /></div>
+                    <div className="flex justify-between items-start z-10 relative">
+                      <span className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded-full ${game.type === "live" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-sm" : "bg-amber-500/20 text-amber-400 border border-amber-500/30 backdrop-blur-sm"}`}>{game.status}</span>
+                      {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
+                    </div>
+                    <h3 className="text-xl md:text-2xl font-bold text-white z-10 drop-shadow-md relative">{game.title}</h3>
+                  </div>
+                  <div className="p-4 md:p-6 flex-1 flex flex-col z-10 bg-slate-900">
+                    <p className="text-slate-400 text-xs md:text-sm line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 flex-1">{game.description}</p>
+                    
+                    <LivePlayerCount base={game.basePlayers} />
+
+                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-800">
+                      <div className="flex flex-col">
+                        <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
+                      </div>
+                      <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
+                        {game.url ? (locked ? "Premium Al" : "Oyna") : "İncele"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    );
+  };
+
+  /* ---------------------------------------------
+     KÜTÜPHANE EKRANI (YENİDEN EKLENDİ)
+  ---------------------------------------------- */
+  const renderLibrary = () => (
+    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
+      <div className="w-full lg:w-1/3 xl:w-1/4 space-y-4">
+        <div className="flex items-center gap-2 mb-6 text-white font-bold text-xl px-2">
+          <Library className="w-6 h-6 text-orange-500" /> Kütüphanem
+        </div>
+        <div className="space-y-2">
+          {GAMES.filter(g => g.status === "Yayında").map(game => (
+            <button
+              key={game.id}
+              onClick={() => setSelectedLibraryGame(game)}
+              className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${selectedLibraryGame?.id === game.id ? "bg-orange-600/20 border border-orange-500/50 text-white" : "bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800"}`}
+            >
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br ${game.gradient}`}>
+                <GameIcon iconKey={game.iconKey} className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-semibold text-sm truncate">{game.title}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden flex flex-col min-h-[400px]">
+        {selectedLibraryGame ? (
+          <>
+            <div className={`absolute top-0 left-0 w-full h-48 bg-gradient-to-br ${selectedLibraryGame.gradient} opacity-20`} />
+            <div className="relative z-10 flex-1 flex flex-col">
+              <div className="flex items-start justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{selectedLibraryGame.title}</h2>
+                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">{selectedLibraryGame.description}</p>
+                  <LivePlayerCount base={selectedLibraryGame.basePlayers} />
+                </div>
+                <div className={`hidden md:flex w-20 h-20 rounded-2xl items-center justify-center shrink-0 bg-gradient-to-br ${selectedLibraryGame.gradient} shadow-xl`}>
+                  <GameIcon iconKey={selectedLibraryGame.iconKey} className="w-10 h-10 text-white" />
+                </div>
+              </div>
+              <div className="mt-auto pt-8 border-t border-slate-800">
+                <button onClick={() => {
+                  if (selectedLibraryGame.requiresPremium && !isUserPremium(currentUser)) {
+                    setShowPricingModal(true);
+                  } else {
+                    openGame(selectedLibraryGame);
+                  }
+                }} className="w-full sm:w-auto px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
+                  <Play className="w-5 h-5" /> 
+                  {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+           <div className="flex flex-col items-center justify-center text-slate-500 h-full flex-1">
+             <Library className="w-12 h-12 mb-4 opacity-50" />
+             <p>Oynamak için sol taraftan bir oyun seçin</p>
+           </div>
+        )}
+      </div>
+    </div>
+  );
+
+  /* ---------------------------------------------
+     LAB EKRANI (YENİDEN EKLENDİ)
+  ---------------------------------------------- */
+  const renderLab = () => (
+    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
+      <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 md:p-10 text-center relative overflow-hidden">
+        <FlaskConical className="w-16 h-16 text-orange-500 mx-auto mb-6 opacity-80" />
+        <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Geliştirme Laboratuvarı</h2>
+        <p className="text-slate-400 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
+          Burada geleceğin oyunlarını ve AI deneyimlerini tasarlıyoruz. Geliştirme aşamasındaki projelerimize göz at ve ilerlemeyi takip et.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {LAB_PROJECTS.map(proj => (
+          <div key={proj.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 flex flex-col hover:border-slate-700 transition-all group">
+            <div className="flex justify-between items-start mb-6">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${proj.gradient}`}>
+                <FlaskConical className="w-6 h-6 text-white opacity-80" />
+              </div>
+              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{proj.status}</span>
+            </div>
+            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{proj.title}</h3>
+            <p className="text-slate-400 text-sm mb-8 flex-1">{proj.description}</p>
+            <div>
+              <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
+                <span>Tamamlanma</span>
+                <span>%{proj.progress}</span>
+              </div>
+              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div className="bg-orange-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  /* ---------------------------------------------
      PROFİL EKRANI
   ---------------------------------------------- */
   const renderProfile = () => {
@@ -1100,34 +1209,28 @@ export default function App() {
     // ==========================================
     const userBadges = [];
     
-    // 1. Yönetici Rozeti
     if (currentUser.role === "admin") {
       userBadges.push({ id: 'admin', title: 'Platform Yöneticisi', desc: 'Sistemin koruyucusu.', icon: ShieldAlert, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' });
     }
     
-    // 2. Premium Rozeti
     if (isPremium) {
       userBadges.push({ id: 'premium', title: 'Premium Üye', desc: 'Platformun ayrıcalıklı destekçisi.', icon: Crown, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' });
     }
     
-    // 3. Oyun Kurdu Rozetleri (Oynama sayısına göre)
-    if (currentUser.playCount >= 50) {
+    if ((currentUser.playCount || 0) >= 50) {
       userBadges.push({ id: 'gamer_pro', title: 'Efsanevi Oyuncu', desc: 'Platformda 50+ oyun oynadı.', icon: Zap, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' });
-    } else if (currentUser.playCount >= 10) {
+    } else if ((currentUser.playCount || 0) >= 10) {
       userBadges.push({ id: 'gamer_mid', title: 'Sıkı Oyuncu', desc: 'Platformda 10+ oyun oynadı.', icon: Gamepad2, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' });
     }
     
-    // 4. Fikir Öncüsü Rozeti (Fikri onaylananlar)
     const approvedFeedbacks = userFeedbacks.filter(fb => fb.status === "onaylandi").length;
     if (approvedFeedbacks > 0) {
       userBadges.push({ id: 'idea', title: 'Fikir Öncüsü', desc: 'Topluluğa harika fikirler kattı.', icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' });
     }
     
-    // 5. İlk Giriş Rozeti (Eğer hiç rozeti yoksa)
     if (userBadges.length === 0) {
        userBadges.push({ id: 'newbie', title: 'Yeni Maceracı', desc: 'Platforma yeni katıldı.', icon: User, color: 'text-slate-400', bg: 'bg-slate-800', border: 'border-slate-700' });
     }
-    // ==========================================
 
     return (
       <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
@@ -1136,12 +1239,12 @@ export default function App() {
           
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
             <div className="w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-orange-500 to-amber-600 rounded-3xl flex items-center justify-center font-black text-white text-4xl md:text-5xl shadow-xl shadow-orange-500/20">
-              {currentUser.name?.charAt(0)?.toUpperCase()}
+              {String(currentUser.name || "U").charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 text-center md:text-left">
-              <h2 className="text-3xl md:text-4xl font-black text-white mb-2">{currentUser.name}</h2>
+              <h2 className="text-3xl md:text-4xl font-black text-white mb-2">{currentUser.name || "Kullanıcı"}</h2>
               <div className="text-slate-400 mb-4 flex items-center justify-center md:justify-start gap-2">
-                <Mail className="w-4 h-4" /> {currentUser.email}
+                <Mail className="w-4 h-4" /> {currentUser.email || "E-posta Yok"}
               </div>
               
               <div className="flex flex-wrap justify-center md:justify-start gap-3">
@@ -1264,8 +1367,8 @@ export default function App() {
 
     await addDoc(collection(db, "feedbacks"), {
       userId: currentUser.id,
-      user: currentUser.name,
-      email: currentUser.email,
+      user: currentUser.name || "Kullanıcı",
+      email: currentUser.email || "",
       game: newFeedbackGame,
       text: text,
       status: "beklemede",
@@ -1319,7 +1422,7 @@ export default function App() {
                 <div>
                   <div className="text-xs font-bold text-orange-500 mb-1">{fb.game}</div>
                   <div className="text-sm font-semibold text-white flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-slate-500" /> {fb.user}
+                    <User className="w-3.5 h-3.5 text-slate-500" /> {fb.user || "Anonim"}
                   </div>
                 </div>
                 <div className="text-[10px] text-slate-500">{fb.date}</div>
@@ -1412,10 +1515,10 @@ export default function App() {
                     return (
                       <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
                         <td className="px-6 py-4">
-                           <div className="text-sm font-medium text-white">{user.name}</div>
+                           <div className="text-sm font-medium text-white">{user.name || "Kullanıcı"}</div>
                            <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {user.paymentCode || "KOD-YOK"}</div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-400">{user.email}</td>
+                        <td className="px-6 py-4 text-sm text-slate-400">{user.email || "E-posta Yok"}</td>
                         <td className="px-6 py-4 text-center">
                         <div className="flex flex-col items-center gap-1">
                           {isPending ? (
@@ -1463,7 +1566,7 @@ export default function App() {
                   <div>
                     <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded inline-block mb-2">{fb.game}</div>
                     <div className="text-sm font-semibold text-white flex items-center gap-1.5">
-                      <User className="w-4 h-4 text-slate-500" /> {fb.user}
+                      <User className="w-4 h-4 text-slate-500" /> {fb.user || "Anonim"}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1478,7 +1581,7 @@ export default function App() {
                   "{fb.text}"
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 justify-between items-center border-t border-slate-800/50 pt-4">
-                  <a href={`mailto:${fb.email}?subject=Forge&Play Fikir Kutusu Bildirimi&body=Merhaba ${fb.user}, fikriniz incelendi...`} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-2 rounded-lg w-full sm:w-auto justify-center transition-colors">
+                  <a href={`mailto:${fb.email || ''}?subject=Forge&Play Fikir Kutusu Bildirimi&body=Merhaba ${fb.user}, fikriniz incelendi...`} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-2 rounded-lg w-full sm:w-auto justify-center transition-colors">
                     <Mail className="w-4 h-4" /> Mail At
                   </a>
                   <div className="flex gap-2 w-full sm:w-auto">
