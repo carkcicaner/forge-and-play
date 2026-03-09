@@ -24,7 +24,9 @@ import {
   Send,
   AlertTriangle,
   Trophy,
-  Mail
+  Mail,
+  Copy,
+  Check
 } from "lucide-react";
 
 // --- FIREBASE IMPORTLARI ---
@@ -281,6 +283,8 @@ export default function App() {
   // Auth / UI
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [paymentIntent, setPaymentIntent] = useState(null); // Ödeme Kodu Modalı İçin
+  const [isCopied, setIsCopied] = useState(false); // Kopyalama durumu için
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -844,7 +848,7 @@ export default function App() {
   );
 
   /* ---------------------------------------------
-     FIREBASE: SATIN ALMA TALEBİ
+     FIREBASE: SATIN ALMA TALEBİ VE KOD MODALI (YENİ)
   ---------------------------------------------- */
   const handlePurchaseRequest = async (plan) => {
     if (!currentUser) {
@@ -853,24 +857,74 @@ export default function App() {
       return;
     }
     
+    // Satın alım talebini Firebase'e işle
     await updateDoc(doc(db, "users", currentUser.id), { pendingRequest: plan });
 
     const paymentUrl = PAYMENT_LINKS[plan];
     if (paymentUrl) {
-      // YENİ UYARI: Kullanıcıya kodunu gösteriyoruz ve kopyalamasını söylüyoruz.
-      const confirmMessage = `ÖNEMLİ ADIM:\n\nÖdemenizin hesabınıza anında işlenebilmesi için lütfen Shopier ödeme ekranındaki "Sipariş Notu" kısmına şu kodu yazın:\n\n${currentUser.paymentCode}\n\nKodu kopyaladınız mı? Devam etmek için Tamam'a basın.`;
-      
-      if(window.confirm(confirmMessage)) {
-         // Kodu otomatik olarak panoya kopyala
-         try {
-           navigator.clipboard.writeText(currentUser.paymentCode);
-         } catch(e) {}
-         window.open(paymentUrl, "_blank");
-         setShowPricingModal(false);
-      }
+      // Pricing modalı kapatıp, yeni Payment Code modalını açıyoruz
+      setShowPricingModal(false);
+      setPaymentIntent({ url: paymentUrl, plan });
     } else {
       alert("Bu plan için ödeme linki henüz tanımlanmadı.");
     }
+  };
+
+  const renderPaymentCodeModal = () => {
+    if (!paymentIntent || !currentUser) return null;
+
+    const handleCopyCode = () => {
+      try {
+        navigator.clipboard.writeText(currentUser.paymentCode);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000); // 2 saniye sonra kopyalandı ikonunu geri al
+      } catch (err) {
+        console.error('Kopyalama işlemi başarısız', err);
+      }
+    };
+
+    const handleProceedToShopier = () => {
+      window.open(paymentIntent.url, "_blank");
+      setPaymentIntent(null); // Modalı kapat
+    };
+
+    return (
+      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+          <button onClick={() => setPaymentIntent(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+          
+          <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/20">
+            <Wallet className="w-8 h-8 text-orange-500" />
+          </div>
+          
+          <h2 className="text-2xl font-black text-white mb-2">Çok Önemli Bir Adım!</h2>
+          <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+            Ödemenizin hesabınıza anında tanımlanabilmesi için Shopier ekranındaki <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded">"Sipariş Notu"</strong> kısmına aşağıdaki size özel kodu yazmanız gerekmektedir.
+          </p>
+          
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between shadow-inner">
+            <span className="text-2xl md:text-3xl font-mono font-black text-orange-400 tracking-wider pl-2">{currentUser.paymentCode}</span>
+            <button 
+              onClick={handleCopyCode}
+              className={`p-3 rounded-lg transition-colors flex items-center justify-center border ${isCopied ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700"}`}
+              title="Kodu Kopyala"
+            >
+              {isCopied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+            </button>
+          </div>
+
+          <button 
+            onClick={handleProceedToShopier}
+            className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 text-lg transform hover:scale-[1.02]"
+          >
+            Kopyaladım, Ödemeye Geç
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const renderPricingModal = () => (
@@ -1410,6 +1464,7 @@ export default function App() {
       {renderNavbar()}
       {showLoginModal && renderLoginModal()}
       {showPricingModal && renderPricingModal()}
+      {paymentIntent && renderPaymentCodeModal()}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 md:px-6 py-6 md:py-12 pb-24 md:pb-12">
         {activeTab === "store" && renderStore()}
         {activeTab === "library" && renderLibrary()}
