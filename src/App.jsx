@@ -245,6 +245,14 @@ const containsProfanity = (text) => {
 /* ---------------------------------------------
     YARDIMCI FONKSİYONLAR
 ---------------------------------------------- */
+
+// SIRALAMA HESAPLAYICI - ÇÖKME HATASI DÜZELTİLDİ
+const calculateRank = (playCount) => {
+  const baseRank = 50000;
+  const rank = baseRank - (Number(playCount || 0) * 142);
+  return rank < 1 ? 1 : rank.toLocaleString('tr-TR');
+};
+
 const isUserAdmin = (user) => {
   if (!user || !user.email) return false;
   if (user.role === "admin") return true;
@@ -469,6 +477,7 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false); // YENİ: Rehber Modalı için state
 
   const featuredGames = useMemo(() => GAMES.filter(g => g.status === "Yayında"), []);
   const filteredGames = useMemo(() => {
@@ -634,10 +643,9 @@ export default function App() {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') setIsInstallable(false);
       setDeferredPrompt(null);
-    } else if (isIOS) {
-      alert("📱 iOS Cihazlarda Kurulum:\n\n1. Tarayıcının alt menüsündeki 'Paylaş' (Kare içinden yukarı ok) ikonuna dokunun.\n2. Aşağı kaydırıp 'Ana Ekrana Ekle' seçeneğini bulun.\n3. 'Ekle' diyerek uygulamayı cihazınıza kısayol olarak kurun!");
     } else {
-      alert("Cihazınız otomatik yüklemeyi desteklemiyor veya uygulama zaten yüklü. Tarayıcı menüsünden (sağ üstteki 3 nokta) 'Ana Ekrana Ekle'yi seçebilirsiniz.");
+      // Otomatik yükleme yoksa (örn: iOS veya manuel Android), rehber modalını aç
+      setShowInstallGuide(true);
     }
   };
 
@@ -656,8 +664,16 @@ export default function App() {
       try {
         await updateDoc(doc(db, "users", currentUser.id), {
           playCount: (Number(currentUser.playCount) || 0) + 1,
+          lastPlayedGameName: game.title, // Oynanan son oyunu kaydet
           lastPlayed: serverTimestamp()
         });
+        
+        // Arayüzün anında güncellenmesi için local state güncellemesi
+        setCurrentUser(prev => ({
+          ...prev,
+          playCount: (Number(prev?.playCount) || 0) + 1,
+          lastPlayedGameName: game.title
+        }));
       } catch (error) {
         console.error("Play count update failed:", error);
       }
@@ -781,6 +797,47 @@ export default function App() {
     }
   };
 
+  /* ---------------------------------------------
+     YENİ: ANA EKRANA EKLE (PWA) REHBER MODALI
+  ---------------------------------------------- */
+  const renderInstallGuideModal = () => {
+    if (!showInstallGuide) return null;
+    return (
+      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+          <button onClick={() => setShowInstallGuide(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+          <Download className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-black text-white mb-2">Ana Ekrana Ekle</h2>
+          <p className="text-slate-400 text-sm mb-6">Forge&Play'i telefonunuza kurarak tek tıkla oyunlara erişin!</p>
+          
+          <div className="text-left space-y-4 mb-6">
+             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <h4 className="font-bold text-white flex items-center gap-2 mb-2">🍎 iOS (iPhone/iPad) İçin:</h4>
+                <ol className="text-sm text-slate-400 space-y-2 list-decimal list-inside pl-2">
+                   <li>Tarayıcının alt menüsündeki <b className="text-slate-200">Paylaş</b> (Yukarı ok) ikonuna dokunun.</li>
+                   <li>Açılan menüyü aşağı kaydırıp <b className="text-slate-200">Ana Ekrana Ekle</b> seçeneğini bulun.</li>
+                   <li>Sağ üstteki <b className="text-slate-200">Ekle</b> butonuna basarak tamamlayın.</li>
+                </ol>
+             </div>
+             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <h4 className="font-bold text-white flex items-center gap-2 mb-2">🤖 Android İçin:</h4>
+                <ol className="text-sm text-slate-400 space-y-2 list-decimal list-inside pl-2">
+                   <li>Tarayıcının sağ üst köşesindeki <b className="text-slate-200">Üç Nokta</b> menüsüne dokunun.</li>
+                   <li><b className="text-slate-200">Ana Ekrana Ekle</b> (veya Uygulamayı Yükle) seçeneğini seçin.</li>
+                   <li>Gelen uyarıda <b className="text-slate-200">Ekle</b> butonuna basarak tamamlayın.</li>
+                </ol>
+             </div>
+          </div>
+          <button onClick={() => setShowInstallGuide(false)} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-colors">
+            Anladım, Teşekkürler
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderNavbar = () => (
     <nav className="sticky top-0 z-50 w-full bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/60 shadow-sm transition-all">
       <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 lg:h-20 flex items-center justify-between gap-4">
@@ -824,16 +881,13 @@ export default function App() {
 
         <div className="flex items-center gap-3 md:gap-5 shrink-0">
           
-          {/* YENİ: NAVİGASYONA EKLENEN İNDİRME VE PAYLAŞ BUTONLARI (MASAÜSTÜ) */}
           <div className="hidden lg:flex items-center gap-2 border-r border-slate-800 pr-4 mr-2">
              <button onClick={handleSharePlatform} className="text-slate-400 hover:text-orange-400 hover:bg-orange-500/10 p-2 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold" title="Arkadaşlarını Davet Et">
                <Share2 className="w-4 h-4" /> Davet Et
              </button>
-             {(isInstallable || isIOS) && (
-               <button onClick={handleInstallApp} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 p-2 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold" title="Ana Ekrana Ekle">
-                 <Download className="w-4 h-4" /> Yükle
-               </button>
-             )}
+             <button onClick={handleInstallApp} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 p-2 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold" title="Ana Ekrana Ekle">
+               <Download className="w-4 h-4" /> Yükle
+             </button>
           </div>
 
           <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-orange-500 transition-colors">
@@ -1078,27 +1132,6 @@ export default function App() {
           <li className="flex gap-3 text-sm text-slate-300 items-start"><CheckCircle2 className="w-5 h-5 text-amber-500 shrink-0" /><span className="pt-0.5">Tüm Premium özellikler</span></li>
         </ul>
         <button onClick={() => handlePurchaseRequest("1Y")} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-amber-500/30 hover:border-amber-500">Kalıcı Destekçi Ol</button>
-      </div>
-    </div>
-  );
-
-  const renderPricingModal = () => (
-    <div className="fixed inset-0 z-[250] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto">
-        <button onClick={() => setShowPricingModal(false)} className="absolute top-4 md:top-6 right-4 md:right-6 text-slate-400 hover:text-white bg-slate-800 p-2 rounded-full transition-colors">
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="text-center mb-8 md:mb-12 max-w-2xl mx-auto mt-4 md:mt-0">
-          <h2 className="text-3xl md:text-4xl font-black text-white mb-4 drop-shadow-md">Maceraya Kesintisiz Devam Et</h2>
-          <p className="text-slate-400 text-sm md:text-base leading-relaxed">Premium abonelik ile Monopoly Dijital Banka dahil tüm araçlara anında erişim sağla.</p>
-        </div>
-
-        {renderPricingCards()}
-
-        {!currentUser && (
-          <div className="mt-8 text-center text-sm text-slate-400">Satın almak için önce <button className="text-orange-500 font-bold hover:text-orange-400" onClick={() => { setShowPricingModal(false); setShowLoginModal(true); }}>giriş yap</button>.</div>
-        )}
       </div>
     </div>
   );
@@ -1456,6 +1489,14 @@ export default function App() {
               {isPremium && <span className="text-emerald-500 font-bold text-sm">Ayrıcalıklısın!</span>}
             </div>
           </div>
+          
+          {/* YENİ: Son Oynanan Oyun Bilgisi */}
+          {currentUser.lastPlayedGameName && (
+            <div className="mt-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 flex items-center justify-center gap-3">
+               <Gamepad2 className="w-5 h-5 text-orange-500" />
+               <span className="text-sm text-slate-300">Son Oynanan Oyun: <b className="text-white">{String(currentUser.lastPlayedGameName)}</b></span>
+            </div>
+          )}
 
           <div className="mt-8 pt-8 border-t border-slate-800">
             <div className="bg-gradient-to-r from-orange-900/20 to-slate-900 border border-orange-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -1685,6 +1726,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
+      {renderInstallGuideModal()}
       {renderNavbar()}
       {showLoginModal && renderLoginModal()}
       {showPricingModal && renderPricingModal()}
@@ -1703,6 +1745,12 @@ export default function App() {
           <div className="flex items-center gap-3 mb-4 md:mb-0 font-bold">
             <img src={LOGO_URL} alt="Forge&Play" className="w-6 h-6 object-contain" />
             <span>© 2026 Forge&Play. Tüm hakları saklıdır.</span>
+          </div>
+          
+          {/* YENİ: APP STORE / PLAY STORE ÇOK YAKINDA */}
+          <div className="flex items-center gap-4 mt-4 md:mt-0">
+             <span className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800"><Smartphone className="w-3.5 h-3.5"/> App Store'da Çok Yakında</span>
+             <span className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800"><Play className="w-3.5 h-3.5"/> Play Store'da Çok Yakında</span>
           </div>
         </div>
       </footer>
