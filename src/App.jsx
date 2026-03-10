@@ -259,7 +259,7 @@ const containsProfanity = (text) => {
 };
 
 /* ---------------------------------------------
-    YARDIMCI FONKSİYONLAR
+    YARDIMCI FONKSİYONLAR - GÜÇLENDİRİLMİŞ
 ---------------------------------------------- */
 const calculateRank = (playCount) => {
   const baseRank = 50000;
@@ -268,10 +268,16 @@ const calculateRank = (playCount) => {
 };
 
 const isUserAdmin = (user) => {
-  if (!user || !user.email) return false;
+  if (!user) return false;
   if (user.role === "admin") return true;
-  const userEmail = String(user.email).toLowerCase().trim();
-  return ADMIN_EMAILS.includes(userEmail);
+  // Çok Agresif E-posta Kontrolü: Admin Paneline kesin giriş için
+  if (user.email) {
+     const mail = String(user.email).toLowerCase().trim();
+     if (mail === "forgeandplay@gmail.com" || mail === "carkci.caner@gmail.com" || ADMIN_EMAILS.includes(mail)) {
+        return true;
+     }
+  }
+  return false;
 };
 
 const isUserPremium = (user) => {
@@ -674,11 +680,10 @@ export default function App() {
     }
   };
 
-  // Oyun Açma Mantığı - Çökme olmadan Premium Kontrolü
+  // Oyun Açma Mantığı
   const openGame = useCallback(async (game) => {
     if (!game) return;
     
-    // Eğer oyun premium ise ve kullanıcı premium değilse, özel uyarı popup'ını aç
     if (game.requiresPremium && !isUserPremium(currentUser)) {
       setPremiumWarningGame(game);
       return;
@@ -697,11 +702,11 @@ export default function App() {
           playCount: (Number(currentUser.playCount) || 0) + 1,
           lastPlayedGameName: game.title
         });
-        setCurrentUser(prev => ({
+        setCurrentUser(prev => prev ? ({
           ...prev,
-          playCount: (Number(prev?.playCount) || 0) + 1,
+          playCount: (Number(prev.playCount) || 0) + 1,
           lastPlayedGameName: game.title
-        }));
+        }) : null);
       } catch (error) {
         console.error("Play count update failed:", error);
       }
@@ -784,7 +789,7 @@ export default function App() {
 
   const handlePurchaseRequest = async (plan) => {
     if (!currentUser) {
-      setActiveTab("premium");
+      setPremiumWarningGame(null); // Popup kapatılıyor
       setShowLoginModal(true);
       return;
     }
@@ -795,6 +800,7 @@ export default function App() {
       });
       const paymentUrl = PAYMENT_LINKS[plan];
       if (paymentUrl) {
+        setPremiumWarningGame(null); // Popup kapatılıyor
         setPaymentIntent({ url: paymentUrl, plan });
       } else {
         alert("Bu plan için ödeme linki henüz tanımlanmadı.");
@@ -825,36 +831,42 @@ export default function App() {
   };
 
   /* ---------------------------------------------
-     YENİ: PREMIUM OYUN UYARI POPUP'I
+     ÇÖZÜM 1: PREMIUM PAKETLERİ İNCELE (BİRLEŞTİRİLMİŞ EKRAN)
   ---------------------------------------------- */
   const renderPremiumWarningModal = () => {
     if (!premiumWarningGame) return null;
+    
+    // Popup kapatma
+    const closeWarning = () => setPremiumWarningGame(null);
+
     return (
-      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
-           <button onClick={() => setPremiumWarningGame(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
+      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
+        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto">
+           <button onClick={closeWarning} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
              <X className="w-5 h-5" />
            </button>
-           <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-           <h2 className="text-2xl font-black text-white mb-2">Premium'a Özel İçerik</h2>
-           <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-             Bu harika oyun Premium üyelere özeldir. <b>{String(premiumWarningGame.title)}</b> oyununa erişmek ve reklamsız bir deneyim yaşamak için hemen avantajları inceleyin.
-           </p>
-           <div className="flex flex-col gap-3">
-             <button onClick={() => { setPremiumWarningGame(null); setActiveTab("premium"); }} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">
-               Premium Paketleri İncele
-             </button>
-             <button onClick={() => setPremiumWarningGame(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
-               Vazgeç
-             </button>
+
+           <div className="text-center mb-8">
+             <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
+             <h2 className="text-3xl md:text-4xl font-black text-white mb-2">Premium'a Özel İçerik</h2>
+             <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto">
+               Bu harika oyun Premium üyelere özeldir. <b>{String(premiumWarningGame.title)}</b> oyununa erişmek ve platformdaki tüm sınırları kaldırmak için hemen aşağıdaki avantajlı paketlerden birini seçin.
+             </p>
            </div>
+           
+           {/* Modal içinde Paketler Gösteriliyor */}
+           {renderPricingCards()}
+
+           {!currentUser && (
+             <div className="mt-8 text-center text-sm text-slate-400">Satın almak için önce <button className="text-orange-500 font-bold hover:text-orange-400" onClick={() => { closeWarning(); setShowLoginModal(true); }}>giriş yap</button>.</div>
+           )}
         </div>
       </div>
     );
   };
 
   /* ---------------------------------------------
-     YENİ: OYUN EKRANI EKLENTİLERİ (TAM EKRAN, YÜKLENİYOR)
+     OYUN EKRANI EKLENTİLERİ
   ---------------------------------------------- */
   const renderPlayerOverlay = () => {
     if (!playingGame) return null;
@@ -905,7 +917,6 @@ export default function App() {
 
         {/* Content */}
         <div className="flex-1 w-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
-          {/* Yükleniyor Animasyonu (Arka Planda) */}
           <div className="absolute inset-0 flex flex-col items-center justify-center z-0 bg-slate-950">
              <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin mb-4"></div>
              <div className="text-orange-500 font-bold animate-pulse text-sm">Oyun Motoru Yükleniyor...</div>
@@ -1042,12 +1053,17 @@ export default function App() {
               <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
                 {String(currentUser.name || "U").charAt(0).toUpperCase()}
               </div>
+              
+              {/* ÇÖZÜM 2: ÇIKIŞ YAP (LOGOUT) GÜVENLİĞİ */}
               <button 
-                onClick={() => {
-                  signOut(auth).then(() => {
-                    setActiveTab("store");
-                    setCurrentUser(null);
-                  }).catch(err => console.error("Çıkış hatası", err));
+                onClick={async () => {
+                  setActiveTab("store");
+                  setPlayingGame(null);
+                  try {
+                    await signOut(auth);
+                  } catch (err) {
+                    console.error("Çıkış hatası", err);
+                  }
                 }} 
                 className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" 
                 title="Çıkış Yap"
@@ -1094,81 +1110,103 @@ export default function App() {
     </div>
   );
 
-  const renderLoginModal = () => (
-    <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative">
-        <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white">
-          <X className="w-6 h-6" />
-        </button>
+  const renderPaymentCodeModal = () => {
+    if (!paymentIntent || !currentUser) return null;
 
-        <div className="text-center mb-6">
-          <div className="w-20 h-20 bg-slate-950 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-800 shadow-lg shadow-orange-500/20 p-2">
-            <img src={LOGO_URL} alt="Forge&Play Logo" className="w-full h-full object-contain" />
-          </div>
-          <h2 className="text-2xl font-black text-white">{isRegistering ? "Aramıza Katıl" : "Hesabına Giriş Yap"}</h2>
-          <p className="text-slate-400 text-sm mt-2">Tüm Forge&Play kütüphanene erişmek için giriş yap.</p>
-        </div>
+    const handleCopyCode = () => {
+      try {
+        navigator.clipboard.writeText(currentUser.paymentCode);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      } catch (err) {
+        console.error('Kopyalama hatası', err);
+      }
+    };
 
-        {authError && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-xs text-center font-bold">
-            {String(authError)}
-          </div>
-        )}
-
-        <form onSubmit={handleLoginSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">E-Posta Adresi</label>
-            <input type="email" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} placeholder="ornek@gmail.com" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Şifre</label>
-            <input type="password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
-          </div>
-
-          {!isRegistering && (
-            <div className="text-right">
-              <button type="button" onClick={() => setShowResetPassword(true)} className="text-xs text-orange-500 hover:text-orange-400">
-                Şifremi Unuttum
-              </button>
-            </div>
-          )}
-
-          {showResetPassword && (
-            <div className="p-3 bg-slate-800 rounded-lg">
-              <p className="text-sm text-slate-300 mb-2">Şifre sıfırlama bağlantısı e-posta adresinize gönderilecektir.</p>
-              <button type="button" onClick={handlePasswordReset} className="text-sm font-bold text-orange-500 hover:text-orange-400">
-                Bağlantı Gönder
-              </button>
-            </div>
-          )}
-
-          <button type="submit" className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-orange-500/20 mt-2">
-            {isRegistering ? "Kayıt Ol ve Başla" : "Giriş Yap"}
+    return (
+      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+          <button onClick={() => setPaymentIntent(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
+            <X className="w-5 h-5" />
           </button>
-        </form>
+          
+          <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/20">
+            <Wallet className="w-8 h-8 text-orange-500" />
+          </div>
+          
+          <h2 className="text-2xl font-black text-white mb-2">Çok Önemli Bir Adım!</h2>
+          <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+            Ödemenizin hesabınıza anında tanımlanabilmesi için Shopier ekranındaki <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded">"Sipariş Notu"</strong> kısmına aşağıdaki size özel kodu yazmanız gerekmektedir.
+          </p>
+          
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between shadow-inner">
+            <span className="text-2xl md:text-3xl font-mono font-black text-orange-400 tracking-wider pl-2">{String(currentUser.paymentCode)}</span>
+            <button 
+              onClick={handleCopyCode}
+              className={`p-3 rounded-lg transition-colors flex items-center justify-center border ${isCopied ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700"}`}
+              title="Kodu Kopyala"
+            >
+              {isCopied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+            </button>
+          </div>
 
-        <div className="relative flex py-5 items-center">
-          <div className="flex-grow border-t border-slate-800"></div>
-          <span className="flex-shrink-0 mx-4 text-slate-500 text-xs font-medium">veya</span>
-          <div className="flex-grow border-t border-slate-800"></div>
-        </div>
-
-        <button type="button" onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 font-bold py-3.5 rounded-xl transition-colors mb-6">
-          <svg className="w-5 h-5" viewBox="0 0 24 24">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-          </svg>
-          Google ile {isRegistering ? "Kayıt Ol" : "Giriş Yap"}
-        </button>
-
-        <p className="text-center text-sm text-slate-400">
-          {isRegistering ? "Zaten hesabın var mı?" : "Henüz hesabın yok mu?"}{" "}
-          <button onClick={() => setIsRegistering(!isRegistering)} className="text-orange-500 font-bold hover:text-orange-400 transition-colors" type="button">
-            {isRegistering ? "Giriş Yap" : "Hemen Kayıt Ol"}
+          <button 
+            onClick={() => { window.open(paymentIntent.url, "_blank"); setPaymentIntent(null); }}
+            className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 text-lg transform hover:scale-[1.02]"
+          >
+            Kopyaladım, Ödemeye Geç
+            <ChevronRight className="w-5 h-5" />
           </button>
-        </p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPricingCards = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+      {/* Paket 1 */}
+      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 md:p-8 flex flex-col hover:border-orange-500/30 transition-all relative">
+        <h3 className="text-xl font-bold text-white mb-2">Aylık Bilet</h3>
+        <p className="text-slate-500 text-sm mb-6 h-10">Kısa süreli deneme ve tek bir oyun gecesi için ideal.</p>
+        <div className="mb-6 flex items-baseline gap-1">
+          <span className="text-4xl font-black text-white">39₺</span>
+          <span className="text-slate-500 text-sm font-medium">/ ay</span>
+        </div>
+        <ul className="space-y-4 mb-8 flex-1">
+          <li className="flex gap-3 text-sm text-slate-300 items-start"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="pt-0.5">Tüm Premium oyunlara erişim</span></li>
+        </ul>
+        <button onClick={() => handlePurchaseRequest("1A")} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Seç ve Başla</button>
+      </div>
+
+      {/* Paket 2 */}
+      <div className="bg-gradient-to-b from-amber-900/40 to-slate-950 border-2 border-amber-500 rounded-3xl p-6 md:p-8 flex flex-col transform lg:-translate-y-4 shadow-2xl shadow-amber-500/20 relative">
+        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-lg">EN POPÜLER</div>
+        <h3 className="text-2xl font-bold text-white mb-2">Sezonluk Kart</h3>
+        <p className="text-amber-200/60 text-sm mb-6 h-10">Düzenli oyuncular için harika bir tasarruf fırsatı.</p>
+        <div className="mb-2 flex items-baseline gap-2">
+          <span className="text-4xl font-black text-white">179₺</span><span className="text-slate-400 text-sm line-through">234₺</span>
+        </div>
+        <div className="text-amber-400 text-sm mb-6 font-bold flex items-center gap-1"><Sparkles className="w-4 h-4" /> %23 İndirim (Aylık 29.8₺)</div>
+        <ul className="space-y-4 mb-8 flex-1">
+          <li className="flex gap-3 text-sm text-slate-200 items-start"><CheckCircle2 className="w-5 h-5 text-amber-400 shrink-0" /><span className="pt-0.5">Tüm Premium özellikler</span></li>
+          <li className="flex gap-3 text-sm text-slate-200 items-start"><CheckCircle2 className="w-5 h-5 text-amber-400 shrink-0" /><span className="pt-0.5">Özel rozet ve sıralama</span></li>
+        </ul>
+        <button onClick={() => handlePurchaseRequest("6A")} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">6 Ay İçin Satın Al</button>
+      </div>
+
+      {/* Paket 3 */}
+      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 md:p-8 flex flex-col hover:border-amber-500/50 transition-all relative">
+        <div className="absolute top-5 right-5 bg-amber-500/10 text-amber-500 px-2.5 py-1 rounded text-xs font-black border border-amber-500/20">%36 İNDİRİM</div>
+        <h3 className="text-xl font-bold text-white mb-2">1 Yıllık Efsane</h3>
+        <p className="text-slate-500 text-sm mb-6 h-10">En yüksek indirimi ve statüyü kap.</p>
+        <div className="mb-2 flex items-baseline gap-2">
+          <span className="text-4xl font-black text-white">299₺</span><span className="text-slate-500 text-sm line-through">468₺</span>
+        </div>
+        <div className="text-amber-500 text-sm mb-6 font-bold flex items-center gap-1"><CalendarDays className="w-4 h-4" /> Aylık 24.9₺</div>
+        <ul className="space-y-4 mb-8 flex-1">
+          <li className="flex gap-3 text-sm text-slate-300 items-start"><CheckCircle2 className="w-5 h-5 text-amber-500 shrink-0" /><span className="pt-0.5">Tüm Premium özellikler</span></li>
+        </ul>
+        <button onClick={() => handlePurchaseRequest("1Y")} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-amber-500/30 hover:border-amber-500">Kalıcı Destekçi Ol</button>
       </div>
     </div>
   );
@@ -1326,7 +1364,7 @@ export default function App() {
                   <Play className="w-5 h-5" />
                   {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
                 </button>
-                <button onClick={() => handleShareGame(selectedLibraryGame)} className="px-5 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors border border-slate-700" title="Arkadaşlarına Gönder">
+                <button onClick={(e) => handleShareGame(selectedLibraryGame, e)} className="px-5 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors border border-slate-700" title="Arkadaşlarına Gönder">
                    <Share2 className="w-5 h-5" />
                 </button>
               </div>
@@ -1341,6 +1379,453 @@ export default function App() {
       </div>
     </div>
   );
+
+  const renderLab = () => (
+    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
+      <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 md:p-10 text-center relative overflow-hidden">
+        <FlaskConical className="w-16 h-16 text-orange-500 mx-auto mb-6 opacity-80" />
+        <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Geliştirme Laboratuvarı</h2>
+        <p className="text-slate-400 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
+          Burada geleceğin oyunlarını ve AI deneyimlerini tasarlıyoruz. Geliştirme aşamasındaki projelerimize göz at ve ilerlemeyi takip et.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {LAB_PROJECTS.map(proj => (
+          <div key={proj.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 flex flex-col hover:border-slate-700 transition-all group">
+            <div className="flex justify-between items-start mb-6">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${proj.gradient}`}>
+                <FlaskConical className="w-6 h-6 text-white opacity-80" />
+              </div>
+              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{String(proj.status)}</span>
+            </div>
+            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{String(proj.title)}</h3>
+            <p className="text-slate-400 text-sm mb-8 flex-1">{String(proj.description)}</p>
+            <div>
+              <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
+                <span>Tamamlanma</span>
+                <span>%{Number(proj.progress)}</span>
+              </div>
+              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div className="bg-orange-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderPremiumPage = () => (
+    <div className="space-y-12 md:space-y-16 animate-in fade-in duration-500 max-w-6xl mx-auto">
+      <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-amber-500/30 shadow-[0_0_40px_rgba(245,158,11,0.1)] text-center p-8 md:p-16">
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 pointer-events-none"></div>
+        <div className="relative z-10">
+          <Crown className="w-16 h-16 md:w-20 md:h-20 text-amber-500 mx-auto mb-6 drop-shadow-lg" />
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white mb-6 tracking-tight">Oyun Deneyimini <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">Zirveye Taşı</span></h1>
+          <p className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed">
+            Forge&Play Premium ile sınırları kaldırın. En popüler parti oyunlarına ve gelişmiş dijital masa araçlarına kesintisiz erişim sağlayın.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-center mb-10">
+          <h2 className="text-2xl md:text-3xl font-bold text-white">Neden Premium?</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { icon: Lock, title: "Sınırsız Erişim", desc: "Monopoly Banka, Tabu ve Quiz gibi tüm kilitli Premium oyunları anında açın.", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+            { icon: Crown, title: "Özel Rozet", desc: "Profilinizde ve skor tablolarında size özel altın rengi Premium rozetini taşıyın.", color: "text-amber-400", bg: "bg-amber-500/10" },
+            { icon: Zap, title: "Erken Erişim", desc: "Laboratuvarda geliştirilen yeni oyunları herkesden önce ilk siz deneyin.", color: "text-blue-400", bg: "bg-blue-500/10" },
+            { icon: HeartHandshake, title: "Projeye Destek", desc: "Bağımsız geliştiriciye destek olarak platformun daha hızlı büyümesini sağlayın.", color: "text-rose-400", bg: "bg-rose-500/10" },
+          ].map((feature, i) => {
+            const FeatureIcon = feature.icon;
+            return (
+              <div key={i} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col items-center text-center hover:border-slate-700 transition-colors">
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 ${feature.bg}`}>
+                  <FeatureIcon className={`w-7 h-7 ${feature.color}`} />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">{String(feature.title)}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{String(feature.desc)}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12">
+        <h2 className="text-2xl md:text-3xl font-bold text-white text-center mb-10">Nasıl Premium Olurum?</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+          <div className="hidden md:block absolute top-8 left-[15%] right-[15%] h-0.5 bg-slate-800"></div>
+          {[
+            { step: "1", title: "Planınızı Seçin", desc: "Aşağıdaki tablodan size en uygun abonelik süresini belirleyin." },
+            { step: "2", title: "Kodunuzu Kopyalayın", desc: "Sistemin size verdiği eşsiz 4 haneli güvenlik kodunu kopyalayın." },
+            { step: "3", title: "Not Olarak Ekleyin", desc: "Shopier ödeme sayfasındaki 'Sipariş Notu' kısmına kodunuzu yapıştırın." }
+          ].map((item, i) => (
+            <div key={i} className="relative z-10 flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-slate-950 border-4 border-slate-900 flex items-center justify-center text-xl font-black text-amber-500 shadow-lg mb-4">
+                {String(item.step)}
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">{String(item.title)}</h3>
+              <p className="text-sm text-slate-400">{String(item.desc)}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-10 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-center">
+          <p className="text-amber-400 text-sm font-medium flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-5 h-5" /> Kodunuzu eklediğinizde ödemeniz sistem tarafından eşleştirilir ve anında onaylanır.
+          </p>
+        </div>
+      </div>
+
+      <div className="pt-8">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Maceraya Başla</h2>
+          <p className="text-slate-400">Hemen bir plan seçin ve oyun gecelerini mükemmelleştirin.</p>
+        </div>
+        {renderPricingCards()}
+      </div>
+    </div>
+  );
+
+  const renderProfile = () => {
+    if (!currentUser) return null;
+    const isPremium = isUserPremium(currentUser);
+    const remDays = getRemainingDays(currentUser.premiumEndDate);
+    const userFeedbacks = feedbacks.filter(fb => fb.userId === currentUser.id);
+
+    const userBadges = [];
+    if (isAdmin) userBadges.push({ id: 'admin', title: 'Platform Yöneticisi', desc: 'Sistemin koruyucusu.', icon: ShieldAlert, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' });
+    if (isPremium) userBadges.push({ id: 'premium', title: 'Premium Üye', desc: 'Platformun ayrıcalıklı destekçisi.', icon: Crown, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' });
+    if ((currentUser.playCount || 0) >= 50) {
+      userBadges.push({ id: 'gamer_pro', title: 'Efsanevi Oyuncu', desc: 'Platformda 50+ oyun oynadı.', icon: Zap, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' });
+    } else if ((currentUser.playCount || 0) >= 10) {
+      userBadges.push({ id: 'gamer_mid', title: 'Sıkı Oyuncu', desc: 'Platformda 10+ oyun oynadı.', icon: Gamepad2, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' });
+    }
+    const approvedFeedbacks = userFeedbacks.filter(fb => fb.status === "onaylandi").length;
+    if (approvedFeedbacks > 0) {
+      userBadges.push({ id: 'idea', title: 'Fikir Öncüsü', desc: 'Topluluğa harika fikirler kattı.', icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' });
+    }
+    if (userBadges.length === 0) {
+      userBadges.push({ id: 'newbie', title: 'Yeni Maceracı', desc: 'Platforma yeni katıldı.', icon: User, color: 'text-slate-400', bg: 'bg-slate-800', border: 'border-slate-700' });
+    }
+
+    return (
+      <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden shadow-2xl">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
+
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
+            <div className="w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-orange-500 to-amber-600 rounded-3xl flex items-center justify-center font-black text-white text-4xl md:text-5xl shadow-xl shadow-orange-500/20">
+              {String(currentUser.name || "U").charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 text-center md:text-left">
+              <h2 className="text-3xl md:text-4xl font-black text-white mb-2">{String(currentUser.name || "Kullanıcı")}</h2>
+              <div className="text-slate-400 mb-4 flex items-center justify-center md:justify-start gap-2">
+                <Mail className="w-4 h-4" /> {String(currentUser.email || "E-posta Yok")}
+              </div>
+
+              <div className="flex flex-wrap justify-center md:justify-start gap-3">
+                {isPremium ? (
+                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Sparkles className="w-4 h-4 mr-2" /> Premium Aktif ({remDays !== null ? remDays : 0} Gün)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                    Standart Üye
+                  </span>
+                )}
+                {isAdmin && (
+                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <Lock className="w-4 h-4 mr-2" /> Yönetici
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-800">
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
+              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Oynanan Oyun</div>
+              <div className="text-2xl font-black text-white">{Number(currentUser.playCount || 0)}</div>
+            </div>
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
+              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Global Sıra</div>
+              <div className="text-2xl font-black text-orange-400 flex items-center justify-center gap-1">
+                <Trophy className="w-5 h-5" /> #{String(calculateRank(currentUser.playCount || 0))}
+              </div>
+            </div>
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
+              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Fikir Önerisi</div>
+              <div className="text-2xl font-black text-white">{Number(userFeedbacks.length || 0)}</div>
+            </div>
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center flex flex-col justify-center items-center">
+              {!isPremium && <button onClick={() => setActiveTab("premium")} className="text-orange-500 hover:text-orange-400 font-bold text-sm transition-colors">Premium Al</button>}
+              {isPremium && <span className="text-emerald-500 font-bold text-sm">Ayrıcalıklısın!</span>}
+            </div>
+          </div>
+          
+          {currentUser.lastPlayedGameName && (
+            <div className="mt-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 flex items-center justify-center gap-3">
+               <Gamepad2 className="w-5 h-5 text-orange-500" />
+               <span className="text-sm text-slate-300">Son Oynanan Oyun: <b className="text-white">{String(currentUser.lastPlayedGameName)}</b></span>
+            </div>
+          )}
+
+          <div className="mt-8 pt-8 border-t border-slate-800">
+            <div className="bg-gradient-to-r from-orange-900/20 to-slate-900 border border-orange-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+               <div>
+                  <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2"><Share2 className="w-5 h-5 text-orange-500" /> Platformu Büyütelim!</h3>
+                  <p className="text-sm text-slate-400 max-w-md">Forge&Play oyunlarını arkadaşlarına gönder ve oyun gecelerini başlat. Uygulamayı ana ekrana ekleyerek tek tıkla ulaş.</p>
+               </div>
+               <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                 <button onClick={handleSharePlatform} className="flex-1 sm:flex-none px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+                   <Share2 className="w-4 h-4" /> Davet Et
+                 </button>
+                 {(isInstallable || isIOS) && (
+                   <button onClick={handleInstallApp} className="flex-1 sm:flex-none px-6 py-3 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-xl transition-colors border border-emerald-500/20 flex items-center justify-center gap-2">
+                     <Download className="w-4 h-4" /> Ana Ekrana Ekle
+                   </button>
+                 )}
+               </div>
+            </div>
+          </div>
+
+          <div className="mt-8 pt-8 border-t border-slate-800">
+            <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
+              <Star className="w-4 h-4 text-orange-500" /> Kazanılan Rozetler
+            </h3>
+            <div className="flex flex-wrap gap-4">
+              {userBadges.map(badge => {
+                const BadgeIcon = badge.icon;
+                return (
+                  <div key={badge.id} className={`flex items-center gap-3 p-3 pr-5 rounded-2xl border ${badge.border} ${badge.bg} transition-all hover:scale-105 cursor-default`} title={badge.desc}>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-950 border border-slate-800/50 shadow-inner">
+                      <BadgeIcon className={`w-5 h-5 ${badge.color}`} />
+                    </div>
+                    <div>
+                      <div className={`text-sm font-bold ${badge.color}`}>{String(badge.title)}</div>
+                      <div className="text-[10px] text-slate-400">{String(badge.desc)}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          
+          {/* ÇÖZÜM 4: PREMIUM ÖZEL FİKİR KUTUSU */}
+          {isPremium && (
+            <div className="mt-8 pt-8 border-t border-slate-800">
+              <div className="bg-gradient-to-r from-indigo-900/20 to-slate-900 border border-indigo-500/20 rounded-3xl p-6 md:p-8">
+                <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                  <MessageSquarePlus className="w-5 h-5 text-indigo-400" /> Premium Öncelikli Fikir Kutusu
+                </h3>
+                <p className="text-sm text-slate-400 mb-6">Fikirleriniz doğrudan geliştirici ekibimize öncelikli olarak iletilir.</p>
+                <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+    );
+  };
+
+  const renderFeedback = () => (
+    <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center">
+        <Lightbulb className="w-16 h-16 text-orange-500 mx-auto mb-4" />
+        <h2 className="text-3xl font-black text-white mb-3">Fikir Kutusu</h2>
+        <p className="text-slate-400 text-sm mb-6 max-w-xl mx-auto">
+          Oyunlarımızla ilgili önerilerini, karşılaştığın sorunları veya aklındaki yeni fikirleri bizimle paylaş. Her fikir, platformu daha iyiye taşımamıza yardımcı olur.
+        </p>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
+        {!currentUser ? (
+          <div className="text-center py-8">
+            <p className="text-slate-400 mb-4">Fikir göndermek için giriş yapmalısın.</p>
+            <button onClick={() => setShowLoginModal(true)} className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors">
+              Giriş Yap / Kayıt Ol
+            </button>
+          </div>
+        ) : (
+          <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
+        )}
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <MessageSquarePlus className="w-5 h-5 text-orange-500" /> Son Gönderilen Fikirler
+        </h3>
+        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+          {feedbacks.slice(0, 5).map(fb => (
+            <div key={fb.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded">{String(fb.game || "")}</span>
+                <span className="text-[10px] text-slate-500">{String(fb.user || "Anonim")}</span>
+              </div>
+              <p className="text-sm text-slate-300">{String(fb.text || "")}</p>
+            </div>
+          ))}
+          {feedbacks.length === 0 && (
+            <p className="text-slate-500 text-center py-4">Henüz fikir gönderilmemiş.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderAdminDashboard = () => {
+    const approvePremiumTime = async (userId, planCode) => {
+      let monthsToAdd = 1;
+      if (planCode === "6A") monthsToAdd = 6;
+      if (planCode === "1Y") monthsToAdd = 12;
+      const u = usersList.find(user => user.id === userId);
+      if(!u) return;
+      const base = u.premiumEndDate && new Date(u.premiumEndDate) > new Date() ? new Date(u.premiumEndDate) : new Date();
+      base.setMonth(base.getMonth() + monthsToAdd);
+      await updateDoc(doc(db, "users", userId), { premiumEndDate: base.toISOString(), pendingRequest: null });
+    };
+
+    const revokePremium = async (userId) => {
+      await updateDoc(doc(db, "users", userId), { premiumEndDate: null, pendingRequest: null });
+    };
+
+    const changeFeedbackStatus = async (id, newStatus) => {
+      await updateDoc(doc(db, "feedbacks", id), { status: newStatus });
+    };
+
+    const deleteFeedback = async (id) => {
+      if(window.confirm("Bu fikri kalıcı olarak silmek istediğinize emin misiniz?")) {
+        await deleteDoc(doc(db, "feedbacks", id));
+      }
+    };
+
+    return (
+      <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <Lock className="w-6 h-6 text-amber-500" />
+              <h2 className="text-2xl md:text-3xl font-bold text-white">Yönetici Paneli</h2>
+            </div>
+            <p className="text-amber-200/60 text-sm">Canlı Veritabanı Kontrol Merkezi</p>
+          </div>
+          <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1">
+            <button onClick={() => setAdminTab("users")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "users" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Kullanıcılar</button>
+            <button onClick={() => setAdminTab("feedbacks")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "feedbacks" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Fikir Kutusu</button>
+          </div>
+        </div>
+
+        {adminTab === "users" && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden animate-in fade-in">
+            <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 gap-3">
+              <h3 className="font-bold text-white">Kayıtlı Kullanıcılar</h3>
+              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-full px-3 py-1.5">
+                <Search className="w-4 h-4 text-slate-500" />
+                <input value={adminSearch} onChange={(e) => setAdminSearch(e.target.value)} type="text" placeholder="İsim/E-posta ara..." className="bg-transparent border-none outline-none text-xs text-white ml-2 w-36 md:w-52" />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-400 text-xs uppercase border-b border-slate-800">
+                    <th className="px-6 py-4 font-semibold">Kullanıcı (Kod)</th>
+                    <th className="px-6 py-4 font-semibold">E-posta</th>
+                    <th className="px-6 py-4 font-semibold text-center">Durum</th>
+                    <th className="px-6 py-4 font-semibold text-right">İşlem</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {sortedUsers.map((user) => {
+                    const isPremium = isUserPremium(user);
+                    const remDays = getRemainingDays(user.premiumEndDate);
+                    const isPending = user.pendingRequest !== null;
+                    return (
+                      <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
+                        <td className="px-6 py-4">
+                           <div className="text-sm font-medium text-white">{String(user.name || "Kullanıcı")}</div>
+                           <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {String(user.paymentCode || "KOD-YOK")}</div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-400">{String(user.email || "E-posta Yok")}</td>
+                        <td className="px-6 py-4 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          {isPending ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({String(user.pendingRequest)})</span>
+                          ) : (
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${isPremium ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : remDays !== null && remDays <= 0 ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                                {isPremium ? "AKTİF" : remDays !== null && remDays <= 0 ? "SÜRESİ DOLDU" : "STANDART"}
+                              </span>
+                            )}
+                            {isPremium && !isPending && <span className="text-[10px] text-slate-500">{remDays !== null ? remDays : 0} gün kaldı</span>}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5 md:gap-2">
+                            {isPending ? (
+                              <>
+                                <button onClick={() => approvePremiumTime(user.id, user.pendingRequest)} className={`text-[10px] md:text-xs font-bold px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-lg shadow-emerald-500/20`}>Onayla</button>
+                                <button onClick={() => revokePremium(user.id)} className={`text-[10px] md:text-xs font-bold px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors`}>Reddet</button>
+                              </>
+                            ) : (
+                              <>
+                                {isPremium && <button onClick={() => revokePremium(user.id)} className={`text-[10px] md:text-xs font-bold px-2 py-1.5 rounded-lg transition-colors bg-red-500/10 text-red-400 hover:bg-red-500/20`} title="Aboneliği İptal Et"><ShieldAlert className="w-3 h-3 md:w-4 md:h-4" /></button>}
+                                <button onClick={() => approvePremiumTime(user.id, "1A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors`} title="1 Ay Manuel Ekle">+1A</button>
+                                <button onClick={() => approvePremiumTime(user.id, "6A")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-orange-900/50 hover:bg-orange-800/50 text-orange-300 transition-colors`} title="6 Ay Manuel Ekle">+6A</button>
+                                <button onClick={() => approvePremiumTime(user.id, "1Y")} className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-amber-900/50 hover:bg-amber-800/50 text-amber-300 transition-colors`} title="1 Yıl Manuel Ekle">+1Y</button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {adminTab === "feedbacks" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
+            {feedbacks.map((fb) => (
+              <div key={fb.id} className={`bg-slate-900 border rounded-2xl p-6 flex flex-col ${fb.status === "beklemede" ? "border-orange-500/50 shadow-lg shadow-orange-500/10" : "border-slate-800"}`}>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded inline-block mb-2">{String(fb.game || "")}</div>
+                    <div className="text-sm font-semibold text-white flex items-center gap-1.5">
+                      <User className="w-4 h-4 text-slate-500" /> {String(fb.user || "Anonim")}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs text-slate-500">{String(fb.date || "")}</div>
+                    <button onClick={() => deleteFeedback(fb.id)} className="text-slate-500 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition-colors" title="Kalıcı Olarak Sil">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-slate-300 text-sm mb-6 flex-1 italic">
+                  "{String(fb.text || "")}"
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 justify-between items-center border-t border-slate-800/50 pt-4">
+                  <a href={`mailto:${fb.email || ''}?subject=Forge&Play Fikir Kutusu Bildirimi&body=Merhaba ${String(fb.user || "")}, fikriniz incelendi...`} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-2 rounded-lg w-full sm:w-auto justify-center transition-colors">
+                    <Mail className="w-4 h-4" /> Mail At
+                  </a>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button onClick={() => changeFeedbackStatus(fb.id, "inceleniyor")} className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition-colors ${fb.status === "inceleniyor" ? "bg-amber-500 text-slate-900" : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20"}`}>İncelemeye Al</button>
+                    <button onClick={() => changeFeedbackStatus(fb.id, "onaylandi")} className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition-colors ${fb.status === "onaylandi" ? "bg-emerald-500 text-slate-900" : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20"}`}>Onayla</button>
+                    <button onClick={() => changeFeedbackStatus(fb.id, "reddedildi")} className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-bold transition-colors ${fb.status === "reddedildi" ? "bg-red-500 text-slate-900" : "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"}`}>Reddet</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {feedbacks.length === 0 && <div className="col-span-full p-10 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">Hiç fikir gelmemiş.</div>}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
@@ -1366,6 +1851,7 @@ export default function App() {
             <span>© 2026 Forge&Play. Tüm hakları saklıdır.</span>
           </div>
           
+          {/* ÇÖZÜM 5: İLETİŞİM & APP STORE / PLAY STORE ÇOK YAKINDA */}
           <div className="flex items-center gap-4 mt-4 md:mt-0">
              <a href="mailto:forgeandplay@gmail.com" className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-orange-400 transition-colors bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
                <Mail className="w-3.5 h-3.5"/> İletişim / Destek
