@@ -83,7 +83,7 @@ const isFirebaseConfigured = firebaseConfig.apiKey !== "BURAYA_GELECEK";
 const ADMIN_EMAILS = [
   "forgeandplay@gmail.com",
   "carkci.caner@gmail.com"
-].map(email => email.toLowerCase().trim());
+].map(email => String(email).toLowerCase().trim());
 
 /* =========================================================================
    💳 ÖDEME LİNKLERİ
@@ -233,12 +233,12 @@ const BAD_WORDS = [
 
 const sanitizeText = (text) => {
   if (!text) return '';
-  return text.replace(/[<>]/g, '').replace(/[{}[\]()]/g, '').trim();
+  return String(text).replace(/[<>]/g, '').replace(/[{}[\]()]/g, '').trim();
 };
 
 const containsProfanity = (text) => {
   if (!text) return false;
-  const lowerText = text.toLowerCase();
+  const lowerText = String(text).toLowerCase();
   return BAD_WORDS.some(word => lowerText.includes(word));
 };
 
@@ -248,7 +248,7 @@ const containsProfanity = (text) => {
 const isUserAdmin = (user) => {
   if (!user || !user.email) return false;
   if (user.role === "admin") return true;
-  const userEmail = user.email.toLowerCase().trim();
+  const userEmail = String(user.email).toLowerCase().trim();
   return ADMIN_EMAILS.includes(userEmail);
 };
 
@@ -356,7 +356,7 @@ const FeedbackForm = ({ currentUser, onSubmit }) => {
   });
 
   const handleTextChange = (e) => {
-    const newText = e.target.value;
+    const newText = String(e.target.value);
     setCharCount(newText.length);
     if (newText.length <= 500) setText(newText);
   };
@@ -392,7 +392,7 @@ const FeedbackForm = ({ currentUser, onSubmit }) => {
       </div>
       {error && (
         <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm">
-          {error}
+          {String(error)}
         </div>
       )}
       <div>
@@ -407,11 +407,11 @@ const FeedbackForm = ({ currentUser, onSubmit }) => {
         <label className="block text-sm font-medium text-slate-400 mb-2">Fikriniz</label>
         <textarea value={text} onChange={handleTextChange} placeholder="Oyun hakkındaki fikirlerinizi, önerilerinizi veya karşılaştığınız sorunları yazın..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 min-h-[120px]" maxLength={500} disabled={isSubmitting} />
         <div className="flex justify-end mt-1">
-          <span className={`text-xs ${charCount >= 450 ? 'text-orange-400' : 'text-slate-500'}`}>{charCount}/500</span>
+          <span className={`text-xs ${charCount >= 450 ? 'text-orange-400' : 'text-slate-500'}`}>{Number(charCount)}/500</span>
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-400 mb-2">Bot değilseniz, lütfen şu işlemin sonucunu yazın: {mathQuestion.a} + {mathQuestion.b} = ?</label>
+        <label className="block text-sm font-medium text-slate-400 mb-2">Bot değilseniz, lütfen şu işlemin sonucunu yazın: {Number(mathQuestion.a)} + {Number(mathQuestion.b)} = ?</label>
         <input type="number" value={mathAnswer} onChange={(e) => setMathAnswer(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500" required />
       </div>
       <button type="submit" disabled={isSubmitting || !text.trim()} className={`w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${focusStyles}`}>
@@ -472,7 +472,7 @@ export default function App() {
 
   const featuredGames = useMemo(() => GAMES.filter(g => g.status === "Yayında"), []);
   const filteredGames = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = String(searchQuery).trim().toLowerCase();
     if (!q) return GAMES;
     return GAMES.filter(g => `${g.title} ${g.description} ${g.tags.join(" ")}`.toLowerCase().includes(q));
   }, [searchQuery]);
@@ -483,9 +483,9 @@ export default function App() {
       if (!a.pendingRequest && b.pendingRequest) return 1;
       return 0;
     });
-    const q = adminSearch.trim().toLowerCase();
+    const q = String(adminSearch).trim().toLowerCase();
     if (!q) return list;
-    return list.filter(u => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
+    return list.filter(u => String(u.name || "").toLowerCase().includes(q) || String(u.email || "").toLowerCase().includes(q));
   }, [usersList, adminSearch]);
 
   const isAdmin = currentUser ? isUserAdmin(currentUser) : false;
@@ -499,7 +499,6 @@ export default function App() {
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // Cihazın iOS olup olmadığını kontrol et (Manuel kurulum yönergesi için)
     const isIosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     if (isIosDevice && !isStandalone) {
@@ -615,7 +614,7 @@ export default function App() {
   };
 
   const handleShareGame = async (game, e) => {
-    e?.stopPropagation(); // Kartın tıklanmasını engelle
+    e?.stopPropagation();
     const shareData = {
       title: game.title,
       text: `Forge&Play'de ${game.title} oynuyoruz! Sende gelsene, efsane sarıyor:`,
@@ -656,7 +655,7 @@ export default function App() {
     if (currentUser) {
       try {
         await updateDoc(doc(db, "users", currentUser.id), {
-          playCount: (currentUser.playCount || 0) + 1,
+          playCount: (Number(currentUser.playCount) || 0) + 1,
           lastPlayed: serverTimestamp()
         });
       } catch (error) {
@@ -680,7 +679,7 @@ export default function App() {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setAuthError("");
-    const email = emailInput.trim().toLowerCase();
+    const email = String(emailInput).trim().toLowerCase();
     if (!email || !passwordInput) {
       setAuthError("E-posta ve şifre boş bırakılamaz.");
       return;
@@ -769,8 +768,8 @@ export default function App() {
       await addDoc(collection(db, "feedbacks"), {
         ...feedbackData,
         userId: currentUser.id,
-        user: currentUser.name || currentUser.email,
-        email: currentUser.email,
+        user: String(currentUser.name || currentUser.email),
+        email: String(currentUser.email),
         status: "beklemede",
         createdAt: serverTimestamp(),
         date: new Date().toLocaleDateString('tr-TR')
@@ -804,7 +803,7 @@ export default function App() {
               const TabIcon = tab.icon;
               return (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm transition-all ${focusStyles} ${activeTab === tab.id ? "bg-slate-800/80 text-white shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"}`}>
-                  <TabIcon className="w-4 h-4" /> {tab.label}
+                  <TabIcon className="w-4 h-4" /> {String(tab.label)}
                 </button>
               );
             })}
@@ -850,13 +849,13 @@ export default function App() {
           ) : currentUser ? (
             <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
               <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
-                <span className="text-sm font-bold text-white leading-tight">{currentUser.name || "Kullanıcı"}</span>
+                <span className="text-sm font-bold text-white leading-tight">{String(currentUser.name || "Kullanıcı")}</span>
                 {isAdmin ? (
                   <span className="text-[10px] font-bold tracking-wide uppercase text-amber-400">Yönetici</span>
                 ) : currentUser.pendingRequest ? (
                   <span className="text-[10px] font-bold tracking-wide uppercase text-amber-500 animate-pulse">Onay Bekleniyor</span>
                 ) : isUserPremium(currentUser) ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-emerald-400">Premium ({getRemainingDays(currentUser.premiumEndDate)} Gün)</span>
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-emerald-400">Premium ({String(getRemainingDays(currentUser.premiumEndDate))} Gün)</span>
                 ) : getRemainingDays(currentUser.premiumEndDate) !== null && getRemainingDays(currentUser.premiumEndDate) <= 0 ? (
                   <span className="text-[10px] font-bold tracking-wide uppercase text-red-400">Süresi Bitti</span>
                 ) : (
@@ -895,7 +894,7 @@ export default function App() {
            return (
              <button key={tab.id} onClick={() => currentUser && tab.id === "profile" ? setActiveTab("profile") : !currentUser && tab.id === "profile" ? setShowLoginModal(true) : setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? (tab.id === "premium" ? "text-amber-500" : "text-orange-500") : "text-slate-500 hover:text-slate-300"}`}>
                <TabIcon className={`w-6 h-6 mb-1 ${tab.id === "premium" && activeTab !== "premium" ? "text-amber-500/70" : ""}`} />
-               <span className="text-[10px] font-bold">{tab.label}</span>
+               <span className="text-[10px] font-bold">{String(tab.label)}</span>
              </button>
            )
         })}
@@ -920,7 +919,7 @@ export default function App() {
 
         {authError && (
           <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-xs text-center font-bold">
-            {authError}
+            {String(authError)}
           </div>
         )}
 
@@ -1012,7 +1011,7 @@ export default function App() {
           </p>
           
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between shadow-inner">
-            <span className="text-2xl md:text-3xl font-mono font-black text-orange-400 tracking-wider pl-2">{currentUser.paymentCode}</span>
+            <span className="text-2xl md:text-3xl font-mono font-black text-orange-400 tracking-wider pl-2">{String(currentUser.paymentCode)}</span>
             <button 
               onClick={handleCopyCode}
               className={`p-3 rounded-lg transition-colors flex items-center justify-center border ${isCopied ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700"}`}
@@ -1135,8 +1134,8 @@ export default function App() {
                         <span className={`${currentSlide === idx ? "animate-pulse" : ""} bg-red-500/20 text-red-400 border border-red-500/30 text-xs md:text-sm font-bold px-3 py-1 rounded-full backdrop-blur-sm`}>Öne Çıkan</span>
                         {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
                       </div>
-                      <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{game.title}</h1>
-                      <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{game.description}</p>
+                      <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{String(game.title)}</h1>
+                      <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{String(game.description)}</p>
                       
                       <div className="pt-2">
                         <LivePlayerCount base={game.basePlayers} />
@@ -1182,22 +1181,21 @@ export default function App() {
                     {game.image && <img src={game.image} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay group-hover:opacity-60 transition-all transform group-hover:scale-110 duration-500 z-0 pointer-events-none" />}
                     <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity transform group-hover:scale-110 duration-500 z-10"><GameIcon iconKey={game.iconKey} className="w-12 h-12" /></div>
                     <div className="flex justify-between items-start z-10 relative">
-                      <span className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded-full ${game.type === "live" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-sm" : "bg-amber-500/20 text-amber-400 border border-amber-500/30 backdrop-blur-sm"}`}>{game.status}</span>
+                      <span className={`text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded-full ${game.type === "live" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 backdrop-blur-sm" : "bg-amber-500/20 text-amber-400 border border-amber-500/30 backdrop-blur-sm"}`}>{String(game.status)}</span>
                       {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
                     </div>
-                    <h3 className="text-xl md:text-2xl font-bold text-white z-10 drop-shadow-md relative">{game.title}</h3>
+                    <h3 className="text-xl md:text-2xl font-bold text-white z-10 drop-shadow-md relative">{String(game.title)}</h3>
                   </div>
                   <div className="p-4 md:p-6 flex-1 flex flex-col z-10 bg-slate-900">
-                    <p className="text-slate-400 text-xs md:text-sm line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 flex-1">{game.description}</p>
+                    <p className="text-slate-400 text-xs md:text-sm line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 flex-1">{String(game.description)}</p>
                     
                     <LivePlayerCount base={game.basePlayers} />
 
                     <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-800">
                       <div className="flex flex-col">
-                        <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
+                        <span className="text-sm md:text-base font-semibold text-white">{String(game.price)}</span>
                       </div>
                       
-                      {/* YENİ: PAYLAŞ İKONU EKLENDİ */}
                       <div className="flex items-center gap-2">
                          <button onClick={(e) => handleShareGame(game, e)} className="p-2 text-slate-400 hover:text-orange-400 hover:bg-orange-500/10 rounded-lg transition-colors" title="Oyunu Paylaş">
                            <Share2 className="w-4 h-4 md:w-5 md:h-5" />
@@ -1233,7 +1231,7 @@ export default function App() {
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br ${game.gradient}`}>
                 <GameIcon iconKey={game.iconKey} className="w-5 h-5 text-white" />
               </div>
-              <span className="font-semibold text-sm truncate">{game.title}</span>
+              <span className="font-semibold text-sm truncate">{String(game.title)}</span>
             </button>
           ))}
         </div>
@@ -1245,8 +1243,8 @@ export default function App() {
             <div className="relative z-10 flex-1 flex flex-col">
               <div className="flex items-start justify-between mb-8">
                 <div>
-                  <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{selectedLibraryGame.title}</h2>
-                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">{selectedLibraryGame.description}</p>
+                  <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{String(selectedLibraryGame.title)}</h2>
+                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">{String(selectedLibraryGame.description)}</p>
                   <LivePlayerCount base={selectedLibraryGame.basePlayers} />
                 </div>
                 <div className={`hidden md:flex w-20 h-20 rounded-2xl items-center justify-center shrink-0 bg-gradient-to-br ${selectedLibraryGame.gradient} shadow-xl`}>
@@ -1290,14 +1288,14 @@ export default function App() {
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${proj.gradient}`}>
                 <FlaskConical className="w-6 h-6 text-white opacity-80" />
               </div>
-              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{proj.status}</span>
+              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{String(proj.status)}</span>
             </div>
-            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{proj.title}</h3>
-            <p className="text-slate-400 text-sm mb-8 flex-1">{proj.description}</p>
+            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{String(proj.title)}</h3>
+            <p className="text-slate-400 text-sm mb-8 flex-1">{String(proj.description)}</p>
             <div>
               <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
                 <span>Tamamlanma</span>
-                <span>%{proj.progress}</span>
+                <span>%{Number(proj.progress)}</span>
               </div>
               <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
                 <div className="bg-orange-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
@@ -1339,8 +1337,8 @@ export default function App() {
                 <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 ${feature.bg}`}>
                   <FeatureIcon className={`w-7 h-7 ${feature.color}`} />
                 </div>
-                <h3 className="text-lg font-bold text-white mb-2">{feature.title}</h3>
-                <p className="text-sm text-slate-400 leading-relaxed">{feature.desc}</p>
+                <h3 className="text-lg font-bold text-white mb-2">{String(feature.title)}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{String(feature.desc)}</p>
               </div>
             );
           })}
@@ -1358,10 +1356,10 @@ export default function App() {
           ].map((item, i) => (
             <div key={i} className="relative z-10 flex flex-col items-center text-center">
               <div className="w-16 h-16 rounded-full bg-slate-950 border-4 border-slate-900 flex items-center justify-center text-xl font-black text-amber-500 shadow-lg mb-4">
-                {item.step}
+                {String(item.step)}
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
-              <p className="text-sm text-slate-400">{item.desc}</p>
+              <h3 className="text-lg font-bold text-white mb-2">{String(item.title)}</h3>
+              <p className="text-sm text-slate-400">{String(item.desc)}</p>
             </div>
           ))}
         </div>
@@ -1414,15 +1412,15 @@ export default function App() {
               {String(currentUser.name || "U").charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 text-center md:text-left">
-              <h2 className="text-3xl md:text-4xl font-black text-white mb-2">{currentUser.name || "Kullanıcı"}</h2>
+              <h2 className="text-3xl md:text-4xl font-black text-white mb-2">{String(currentUser.name || "Kullanıcı")}</h2>
               <div className="text-slate-400 mb-4 flex items-center justify-center md:justify-start gap-2">
-                <Mail className="w-4 h-4" /> {currentUser.email || "E-posta Yok"}
+                <Mail className="w-4 h-4" /> {String(currentUser.email || "E-posta Yok")}
               </div>
 
               <div className="flex flex-wrap justify-center md:justify-start gap-3">
                 {isPremium ? (
                   <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <Sparkles className="w-4 h-4 mr-2" /> Premium Aktif ({remDays} Gün)
+                    <Sparkles className="w-4 h-4 mr-2" /> Premium Aktif ({String(remDays)} Gün)
                   </span>
                 ) : (
                   <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 border border-slate-700">
@@ -1446,7 +1444,7 @@ export default function App() {
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
               <div className="text-slate-500 text-xs font-bold uppercase mb-1">Global Sıra</div>
               <div className="text-2xl font-black text-orange-400 flex items-center justify-center gap-1">
-                <Trophy className="w-5 h-5" /> #{calculateRank(currentUser.playCount || 0)}
+                <Trophy className="w-5 h-5" /> #{String(calculateRank(currentUser.playCount || 0))}
               </div>
             </div>
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
@@ -1459,7 +1457,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* YENİ: Topluluğu Büyüt & Uygulamayı İndir Alanı */}
           <div className="mt-8 pt-8 border-t border-slate-800">
             <div className="bg-gradient-to-r from-orange-900/20 to-slate-900 border border-orange-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                <div>
@@ -1492,8 +1489,8 @@ export default function App() {
                       <BadgeIcon className={`w-5 h-5 ${badge.color}`} />
                     </div>
                     <div>
-                      <div className={`text-sm font-bold ${badge.color}`}>{badge.title}</div>
-                      <div className="text-[10px] text-slate-400">{badge.desc}</div>
+                      <div className={`text-sm font-bold ${badge.color}`}>{String(badge.title)}</div>
+                      <div className="text-[10px] text-slate-400">{String(badge.desc)}</div>
                     </div>
                   </div>
                 )
@@ -1604,20 +1601,20 @@ export default function App() {
                     return (
                       <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
                         <td className="px-6 py-4">
-                           <div className="text-sm font-medium text-white">{user.name || "Kullanıcı"}</div>
-                           <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {user.paymentCode || "KOD-YOK"}</div>
+                           <div className="text-sm font-medium text-white">{String(user.name || "Kullanıcı")}</div>
+                           <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {String(user.paymentCode || "KOD-YOK")}</div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-400">{user.email || "E-posta Yok"}</td>
+                        <td className="px-6 py-4 text-sm text-slate-400">{String(user.email || "E-posta Yok")}</td>
                         <td className="px-6 py-4 text-center">
                         <div className="flex flex-col items-center gap-1">
                           {isPending ? (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({user.pendingRequest})</span>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({String(user.pendingRequest)})</span>
                           ) : (
                               <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${isPremium ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : remDays !== null && remDays <= 0 ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
                                 {isPremium ? "AKTİF" : remDays !== null && remDays <= 0 ? "SÜRESİ DOLDU" : "STANDART"}
                               </span>
                             )}
-                            {isPremium && !isPending && <span className="text-[10px] text-slate-500">{remDays} gün kaldı</span>}
+                            {isPremium && !isPending && <span className="text-[10px] text-slate-500">{String(remDays)} gün kaldı</span>}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right">
@@ -1668,7 +1665,7 @@ export default function App() {
                   "{String(fb.text || "")}"
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 justify-between items-center border-t border-slate-800/50 pt-4">
-                  <a href={`mailto:${fb.email || ''}?subject=Forge&Play Fikir Kutusu Bildirimi&body=Merhaba ${fb.user}, fikriniz incelendi...`} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-2 rounded-lg w-full sm:w-auto justify-center transition-colors">
+                  <a href={`mailto:${fb.email || ''}?subject=Forge&Play Fikir Kutusu Bildirimi&body=Merhaba ${String(fb.user || "")}, fikriniz incelendi...`} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-2 rounded-lg w-full sm:w-auto justify-center transition-colors">
                     <Mail className="w-4 h-4" /> Mail At
                   </a>
                   <div className="flex gap-2 w-full sm:w-auto">
