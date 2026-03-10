@@ -1110,6 +1110,85 @@ export default function App() {
     </div>
   );
 
+  const renderLoginModal = () => (
+    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative my-auto flex flex-col mx-auto">
+        <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white p-2">
+          <X className="w-6 h-6" />
+        </button>
+
+        <div className="text-center mb-6">
+          <div className="w-20 h-20 bg-slate-950 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-800 shadow-lg shadow-orange-500/20 p-2">
+            <img src={LOGO_URL} alt="Forge&Play Logo" className="w-full h-full object-contain" />
+          </div>
+          <h2 className="text-2xl font-black text-white">{isRegistering ? "Aramıza Katıl" : "Hesabına Giriş Yap"}</h2>
+          <p className="text-slate-400 text-sm mt-2">Tüm Forge&Play kütüphanene erişmek için giriş yap.</p>
+        </div>
+
+        {authError && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-xs text-center font-bold">
+            {String(authError)}
+          </div>
+        )}
+
+        <form onSubmit={handleLoginSubmit} className="space-y-4 w-full">
+          <div className="w-full">
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">E-Posta Adresi</label>
+            <input type="email" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} placeholder="ornek@gmail.com" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
+          </div>
+          <div className="w-full">
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Şifre</label>
+            <input type="password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors" />
+          </div>
+
+          {!isRegistering && (
+            <div className="text-right w-full">
+              <button type="button" onClick={() => setShowResetPassword(true)} className="text-xs text-orange-500 hover:text-orange-400 font-medium">
+                Şifremi Unuttum
+              </button>
+            </div>
+          )}
+
+          {showResetPassword && (
+            <div className="p-3 bg-slate-800 rounded-lg w-full text-center">
+              <p className="text-sm text-slate-300 mb-2">Şifre sıfırlama bağlantısı e-posta adresinize gönderilecektir.</p>
+              <button type="button" onClick={handlePasswordReset} className="text-sm font-bold text-orange-500 hover:text-orange-400">
+                Bağlantı Gönder
+              </button>
+            </div>
+          )}
+
+          <button type="submit" className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-orange-500/20 mt-2">
+            {isRegistering ? "Kayıt Ol ve Başla" : "Giriş Yap"}
+          </button>
+        </form>
+
+        <div className="relative flex py-5 items-center w-full">
+          <div className="flex-grow border-t border-slate-800"></div>
+          <span className="flex-shrink-0 mx-4 text-slate-500 text-xs font-medium">veya</span>
+          <div className="flex-grow border-t border-slate-800"></div>
+        </div>
+
+        <button type="button" onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 font-bold py-3.5 rounded-xl transition-colors mb-6">
+          <svg className="w-5 h-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+          </svg>
+          Google ile {isRegistering ? "Kayıt Ol" : "Giriş Yap"}
+        </button>
+
+        <p className="text-center text-sm text-slate-400 w-full">
+          {isRegistering ? "Zaten hesabın var mı?" : "Henüz hesabın yok mu?"}{" "}
+          <button onClick={() => setIsRegistering(!isRegistering)} className="text-orange-500 font-bold hover:text-orange-400 transition-colors" type="button">
+            {isRegistering ? "Giriş Yap" : "Hemen Kayıt Ol"}
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+
   const renderPaymentCodeModal = () => {
     if (!paymentIntent || !currentUser) return null;
 
@@ -1528,7 +1607,7 @@ export default function App() {
               <div className="flex flex-wrap justify-center md:justify-start gap-3">
                 {isPremium ? (
                   <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <Sparkles className="w-4 h-4 mr-2" /> Premium Aktif ({remDays !== null ? remDays : 0} Gün)
+                    <Sparkles className="w-4 h-4 mr-2" /> Premium Aktif ({String(remDays)} Gün)
                   </span>
                 ) : (
                   <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 border border-slate-700">
@@ -1613,7 +1692,6 @@ export default function App() {
             </div>
           </div>
           
-          {/* ÇÖZÜM 4: PREMIUM ÖZEL FİKİR KUTUSU */}
           {isPremium && (
             <div className="mt-8 pt-8 border-t border-slate-800">
               <div className="bg-gradient-to-r from-indigo-900/20 to-slate-900 border border-indigo-500/20 rounded-3xl p-6 md:p-8">
