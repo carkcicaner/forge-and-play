@@ -454,9 +454,8 @@ export default function App() {
   const [playingGame, setPlayingGame] = useState(null);
   const [selectedLibraryGame, setSelectedLibraryGame] = useState(GAMES[0]);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showPricingModal, setShowPricingModal] = useState(false);
   const [paymentIntent, setPaymentIntent] = useState(null);
-  const [premiumWarningGame, setPremiumWarningGame] = useState(null); // YENİ: Premium Oyun Uyarı Modalı State'i
+  const [premiumWarningGame, setPremiumWarningGame] = useState(null); 
   const [isCopied, setIsCopied] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -543,7 +542,8 @@ export default function App() {
                 await updateDoc(userRef, updates).catch(console.error);
                 Object.assign(userData, updates);
               }
-              setCurrentUser({ id: firebaseUser.uid, ...userData });
+              // Güvenlik & Stabilite: Email'i her zaman güvenli tut
+              setCurrentUser({ id: firebaseUser.uid, email: userEmail, ...userData });
             } else {
               const paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
               const safeName = sanitizeText(firebaseUser.displayName || userEmail.split("@")[0] || "Oyuncu");
@@ -586,7 +586,6 @@ export default function App() {
       (snapshot) => {
         const fbList = snapshot.docs.map(doc => {
           const data = doc.data();
-          // Çökme hatasına karşı özel tarih formatlama kontrolü (serverTimestamp hatası)
           let dateStr = new Date().toISOString();
           if (data.createdAt) {
             if (typeof data.createdAt.toDate === 'function') {
@@ -682,7 +681,6 @@ export default function App() {
         await updateDoc(doc(db, "users", currentUser.id), {
           playCount: (Number(currentUser.playCount) || 0) + 1,
           lastPlayedGameName: game.title
-          // lastPlayed: serverTimestamp() // Çökmeyi önlemek için bu anlık olarak kaldırıldı
         });
         setCurrentUser(prev => ({
           ...prev,
@@ -771,7 +769,7 @@ export default function App() {
 
   const handlePurchaseRequest = async (plan) => {
     if (!currentUser) {
-      setShowPricingModal(false);
+      setActiveTab("premium");
       setShowLoginModal(true);
       return;
     }
@@ -782,7 +780,6 @@ export default function App() {
       });
       const paymentUrl = PAYMENT_LINKS[plan];
       if (paymentUrl) {
-        setShowPricingModal(false);
         setPaymentIntent({ url: paymentUrl, plan });
       } else {
         alert("Bu plan için ödeme linki henüz tanımlanmadı.");
@@ -829,7 +826,7 @@ export default function App() {
              Bu harika oyun Premium üyelere özeldir. <b>{String(premiumWarningGame.title)}</b> oyununa erişmek ve reklamsız bir deneyim yaşamak için hemen avantajları inceleyin.
            </p>
            <div className="flex flex-col gap-3">
-             <button onClick={() => { setPremiumWarningGame(null); setShowPricingModal(true); }} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">
+             <button onClick={() => { setPremiumWarningGame(null); setActiveTab("premium"); }} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">
                Premium Paketleri İncele
              </button>
              <button onClick={() => setPremiumWarningGame(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
@@ -1030,7 +1027,16 @@ export default function App() {
               <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
                 {String(currentUser.name || "U").charAt(0).toUpperCase()}
               </div>
-              <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
+              <button 
+                onClick={() => {
+                  signOut(auth).then(() => {
+                    setActiveTab("store");
+                    setCurrentUser(null);
+                  }).catch(err => console.error("Çıkış hatası", err));
+                }} 
+                className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" 
+                title="Çıkış Yap"
+              >
                 <LogOut className="w-4 h-4 lg:w-5 lg:h-5" />
               </button>
             </div>
@@ -1063,6 +1069,12 @@ export default function App() {
              </button>
            )
         })}
+        {isAdmin && (
+          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
+            <Lock className="w-6 h-6 mb-1" />
+            <span className="text-[10px] font-bold">Admin</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1601,6 +1613,7 @@ export default function App() {
             </div>
           </div>
           
+          {/* YENİ: Son Oynanan Oyun Bilgisi */}
           {currentUser.lastPlayedGameName && (
             <div className="mt-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 flex items-center justify-center gap-3">
                <Gamepad2 className="w-5 h-5 text-orange-500" />
@@ -1870,7 +1883,6 @@ export default function App() {
       {playingGame && renderPlayerOverlay()}
       {renderNavbar()}
       {showLoginModal && renderLoginModal()}
-      {showPricingModal && renderPricingModal()}
       {paymentIntent && renderPaymentCodeModal()}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 md:px-6 py-6 md:py-12 pb-24 md:pb-12">
         {activeTab === "store" && renderStore()}
