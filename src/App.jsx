@@ -33,7 +33,8 @@ import {
   Star,
   Share2,
   Download,
-  Smartphone
+  Smartphone,
+  Maximize
 } from "lucide-react";
 
 // --- FIREBASE IMPORTLARI ---
@@ -245,8 +246,6 @@ const containsProfanity = (text) => {
 /* ---------------------------------------------
     YARDIMCI FONKSİYONLAR
 ---------------------------------------------- */
-
-// SIRALAMA HESAPLAYICI - ÇÖKME HATASI DÜZELTİLDİ
 const calculateRank = (playCount) => {
   const baseRank = 50000;
   const rank = baseRank - (Number(playCount || 0) * 142);
@@ -477,7 +476,7 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
-  const [showInstallGuide, setShowInstallGuide] = useState(false); // YENİ: Rehber Modalı için state
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   const featuredGames = useMemo(() => GAMES.filter(g => g.status === "Yayında"), []);
   const filteredGames = useMemo(() => {
@@ -644,7 +643,6 @@ export default function App() {
       if (outcome === 'accepted') setIsInstallable(false);
       setDeferredPrompt(null);
     } else {
-      // Otomatik yükleme yoksa (örn: iOS veya manuel Android), rehber modalını aç
       setShowInstallGuide(true);
     }
   };
@@ -664,11 +662,9 @@ export default function App() {
       try {
         await updateDoc(doc(db, "users", currentUser.id), {
           playCount: (Number(currentUser.playCount) || 0) + 1,
-          lastPlayedGameName: game.title, // Oynanan son oyunu kaydet
+          lastPlayedGameName: game.title, 
           lastPlayed: serverTimestamp()
         });
-        
-        // Arayüzün anında güncellenmesi için local state güncellemesi
         setCurrentUser(prev => ({
           ...prev,
           playCount: (Number(prev?.playCount) || 0) + 1,
@@ -798,8 +794,111 @@ export default function App() {
   };
 
   /* ---------------------------------------------
-     YENİ: ANA EKRANA EKLE (PWA) REHBER MODALI
+     YENİ: OYUN EKRANI EKLENTİLERİ (TAM EKRAN, YÜKLENİYOR)
   ---------------------------------------------- */
+  const renderPlayerOverlay = () => {
+    if (!playingGame) return null;
+    const isLockedPremium = playingGame.requiresPremium && !isUserPremium(currentUser);
+    const secureUrl = getSecureGameUrl(playingGame.url);
+
+    const toggleFullScreen = () => {
+      const docEl = document.documentElement;
+      if (!document.fullscreenElement) {
+        if (docEl.requestFullscreen) docEl.requestFullscreen().catch(err => console.log(err));
+        else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-[500] bg-black flex flex-col animate-in fade-in zoom-in-95 duration-300" style={{ height: "100dvh" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-3 md:px-6 py-2 bg-slate-950 border-b border-slate-800 shadow-xl z-20">
+          <div className="flex items-center gap-2 md:gap-3 text-white font-bold truncate">
+            <div className="flex bg-slate-900 p-1.5 rounded-md border border-slate-800 shadow-sm shadow-orange-500/20">
+              <img src={LOGO_URL} alt="Logo" className="w-5 h-5 object-contain" />
+            </div>
+            <span className="hidden sm:inline tracking-tight">Forge<span className="text-orange-500">&</span>Play</span>
+            <span className="hidden sm:inline text-slate-600 select-none">|</span>
+            <span className="text-xs md:text-sm text-slate-300 font-medium truncate flex items-center gap-2">
+              <span className="hidden sm:inline">Oynanıyor:</span>
+              <span className="text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">{String(playingGame.title)}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={toggleFullScreen} className="text-slate-400 hover:text-white p-2 rounded-lg bg-slate-900 hover:bg-slate-800 transition-colors hidden sm:block" title="Tam Ekran">
+              <Maximize className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                setPlayingGame(null);
+                if (document.fullscreenElement) document.exitFullscreen();
+              }}
+              className={`flex items-center gap-1.5 md:gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}
+            >
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Oyundan Çık</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 w-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
+          {isLockedPremium ? (
+            <div className="text-center space-y-6 p-6 max-w-md bg-slate-950 rounded-2xl border border-slate-800 shadow-2xl z-10">
+              <Lock className="w-16 h-16 text-amber-500 mx-auto" />
+              <h2 className="text-2xl font-bold text-white">Premium İçerik</h2>
+              <p className="text-slate-400"><b>{String(playingGame.title)}</b> içeriğini kullanabilmek için aktif aboneliğiniz olmalıdır.</p>
+              <div className="pt-4 space-y-3">
+                <button
+                  onClick={() => { setPlayingGame(null); setActiveTab("premium"); }}
+                  className={`flex items-center justify-center gap-2 w-full px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-500 font-bold transition-colors ${focusStyles}`}
+                >
+                  <Sparkles className="w-5 h-5" /> Abonelik Planlarını Gör
+                </button>
+                <button
+                  onClick={() => setPlayingGame(null)}
+                  className={`w-full px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}
+                >
+                  Vazgeç
+                </button>
+              </div>
+            </div>
+          ) : playingGame.url ? (
+            <>
+              {/* Yükleniyor Animasyonu (Arka Planda) */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-0 bg-slate-950">
+                 <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin mb-4"></div>
+                 <div className="text-orange-500 font-bold animate-pulse text-sm">Oyun Motoru Yükleniyor...</div>
+              </div>
+              <iframe
+                src={secureUrl}
+                className="absolute inset-0 w-full h-full border-none outline-none z-10 bg-transparent"
+                title={playingGame.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; microphone; camera; fullscreen"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-downloads"
+                loading="lazy"
+              />
+            </>
+          ) : (
+            <div className="text-center space-y-4 p-6 z-10">
+              <FlaskConical className="w-16 h-16 text-slate-700 mx-auto animate-bounce" />
+              <h2 className="text-xl md:text-2xl font-bold text-slate-400">Oyun Henüz Hazır Değil</h2>
+              <button
+                onClick={() => setPlayingGame(null)}
+                className={`mt-4 px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}
+              >
+                Geri Dön
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderInstallGuideModal = () => {
     if (!showInstallGuide) return null;
     return (
@@ -1727,6 +1826,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
       {renderInstallGuideModal()}
+      {playingGame && renderPlayerOverlay()}
       {renderNavbar()}
       {showLoginModal && renderLoginModal()}
       {showPricingModal && renderPricingModal()}
@@ -1756,6 +1856,10 @@ export default function App() {
       </footer>
       {renderMobileBottomNav()}
       <style dangerouslySetInnerHTML={{ __html: `
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #020617; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #f97316; }
         html, body, #root {
           max-width: 100vw;
           overflow-x: hidden;
