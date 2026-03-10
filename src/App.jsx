@@ -220,7 +220,7 @@ const LAB_PROJECTS = [
 const focusStyles = "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-500 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950";
 
 /* ---------------------------------------------
-    KÜFÜR FİLTRESİ SÖZLÜĞÜ - Genişletildi
+    KÜFÜR FİLTRESİ SÖZLÜĞÜ
 ---------------------------------------------- */
 const BAD_WORDS = [
   "amk", "aq", "sg", "siktir", "yavşak", "oç", "orospu", "piç", "ibne",
@@ -228,16 +228,11 @@ const BAD_WORDS = [
   "ananı", "bacı", "pezevenk", "gerizekalı", "salak", "aptal"
 ];
 
-// Güvenlik: Metin temizleme (XSS koruması)
 const sanitizeText = (text) => {
   if (!text) return '';
-  return text
-    .replace(/[<>]/g, '') // HTML taglarını kaldır
-    .replace(/[{}[\]()]/g, '') // JSON benzeri yapıları temizle
-    .trim();
+  return text.replace(/[<>]/g, '').replace(/[{}[\]()]/g, '').trim();
 };
 
-// Küfür kontrolü
 const containsProfanity = (text) => {
   if (!text) return false;
   const lowerText = text.toLowerCase();
@@ -245,10 +240,8 @@ const containsProfanity = (text) => {
 };
 
 /* ---------------------------------------------
-    YARDIMCI (HELPER) FONKSİYONLAR
+    YARDIMCI FONKSİYONLAR
 ---------------------------------------------- */
-
-// Güvenli admin kontrolü
 const isUserAdmin = (user) => {
   if (!user || !user.email) return false;
   if (user.role === "admin") return true;
@@ -256,7 +249,6 @@ const isUserAdmin = (user) => {
   return ADMIN_EMAILS.includes(userEmail);
 };
 
-// Güvenli premium kontrolü
 const isUserPremium = (user) => {
   if (!user) return false;
   if (isUserAdmin(user)) return true;
@@ -278,7 +270,6 @@ const getRemainingDays = (dateString) => {
   }
 };
 
-// Rate limiter (bot koruması)
 const createRateLimiter = (maxAttempts = 5, timeWindow = 60000) => {
   const attempts = new Map();
   return (key) => {
@@ -292,8 +283,8 @@ const createRateLimiter = (maxAttempts = 5, timeWindow = 60000) => {
   };
 };
 
-const feedbackRateLimiter = createRateLimiter(3, 60000); // 1 dk'da 3 feedback
-const loginRateLimiter = createRateLimiter(5, 300000);  // 5 dk'da 5 login
+const feedbackRateLimiter = createRateLimiter(3, 60000);
+const loginRateLimiter = createRateLimiter(5, 300000);
 
 /* ---------------------------------------------
     ICON MAP
@@ -345,7 +336,7 @@ function LivePlayerCount({ base }) {
 }
 
 /* ---------------------------------------------
-    FEEDBACK FORMU BİLEŞENİ (Bot korumalı)
+    FEEDBACK FORMU BİLEŞENİ
 ---------------------------------------------- */
 const FeedbackForm = ({ currentUser, onSubmit }) => {
   const [text, setText] = useState("");
@@ -353,9 +344,7 @@ const FeedbackForm = ({ currentUser, onSubmit }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [charCount, setCharCount] = useState(0);
-  // Honeypot alanı (botlar doldurur)
   const [honeypot, setHoneypot] = useState("");
-  // Basit matematik sorusu
   const [mathAnswer, setMathAnswer] = useState("");
   const [mathQuestion] = useState(() => {
     const a = Math.floor(Math.random() * 5) + 1;
@@ -373,44 +362,16 @@ const FeedbackForm = ({ currentUser, onSubmit }) => {
     e.preventDefault();
     setError("");
 
-    // Honeypot kontrolü
-    if (honeypot) {
-      setError("Bot tespit edildi.");
-      return;
-    }
-
-    // Matematik kontrolü
-    if (parseInt(mathAnswer) !== mathQuestion.answer) {
-      setError("Matematik sorusunu doğru cevaplayın.");
-      return;
-    }
-
-    if (!currentUser) {
-      setError("Giriş yapmalısınız.");
-      return;
-    }
-
-    if (!text.trim() || text.length < 10) {
-      setError("Fikir en az 10 karakter olmalıdır.");
-      return;
-    }
-
-    if (containsProfanity(text)) {
-      setError("Uygunsuz kelime tespit edildi.");
-      return;
-    }
-
-    if (!feedbackRateLimiter(currentUser.id)) {
-      setError("Çok fazla fikir gönderdiniz, lütfen bekleyin.");
-      return;
-    }
+    if (honeypot) { setError("Bot tespit edildi."); return; }
+    if (parseInt(mathAnswer) !== mathQuestion.answer) { setError("Matematik sorusunu doğru cevaplayın."); return; }
+    if (!currentUser) { setError("Giriş yapmalısınız."); return; }
+    if (!text.trim() || text.length < 10) { setError("Fikir en az 10 karakter olmalıdır."); return; }
+    if (containsProfanity(text)) { setError("Uygunsuz kelime tespit edildi."); return; }
+    if (!feedbackRateLimiter(currentUser.id)) { setError("Çok fazla fikir gönderdiniz, lütfen bekleyin."); return; }
 
     setIsSubmitting(true);
     try {
-      await onSubmit({
-        text: sanitizeText(text),
-        game: sanitizeText(game)
-      });
+      await onSubmit({ text: sanitizeText(text), game: sanitizeText(game) });
       setText("");
       setCharCount(0);
       setMathAnswer("");
@@ -423,86 +384,38 @@ const FeedbackForm = ({ currentUser, onSubmit }) => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Honeypot - gizli alan */}
       <div className="hidden">
-        <input
-          type="text"
-          value={honeypot}
-          onChange={(e) => setHoneypot(e.target.value)}
-          tabIndex="-1"
-          autoComplete="off"
-        />
+        <input type="text" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} tabIndex="-1" autoComplete="off" />
       </div>
-
       {error && (
         <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm">
           {error}
         </div>
       )}
-
       <div>
-        <label className="block text-sm font-medium text-slate-400 mb-2">
-          Oyun Seç
-        </label>
-        <select
-          value={game}
-          onChange={(e) => setGame(e.target.value)}
-          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500"
-        >
+        <label className="block text-sm font-medium text-slate-400 mb-2">Oyun Seç</label>
+        <select value={game} onChange={(e) => setGame(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500">
           {GAMES.filter(g => g.status === "Yayında").map(g => (
             <option key={g.id} value={g.title}>{g.title}</option>
           ))}
         </select>
       </div>
-
       <div>
-        <label className="block text-sm font-medium text-slate-400 mb-2">
-          Fikriniz
-        </label>
-        <textarea
-          value={text}
-          onChange={handleTextChange}
-          placeholder="Oyun hakkındaki fikirlerinizi, önerilerinizi veya karşılaştığınız sorunları yazın..."
-          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 min-h-[120px]"
-          maxLength={500}
-          disabled={isSubmitting}
-        />
+        <label className="block text-sm font-medium text-slate-400 mb-2">Fikriniz</label>
+        <textarea value={text} onChange={handleTextChange} placeholder="Oyun hakkındaki fikirlerinizi, önerilerinizi veya karşılaştığınız sorunları yazın..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 min-h-[120px]" maxLength={500} disabled={isSubmitting} />
         <div className="flex justify-end mt-1">
-          <span className={`text-xs ${charCount >= 450 ? 'text-orange-400' : 'text-slate-500'}`}>
-            {charCount}/500
-          </span>
+          <span className={`text-xs ${charCount >= 450 ? 'text-orange-400' : 'text-slate-500'}`}>{charCount}/500</span>
         </div>
       </div>
-
-      {/* Basit matematik sorusu (bot koruması) */}
       <div>
-        <label className="block text-sm font-medium text-slate-400 mb-2">
-          Bot değilseniz, lütfen şu işlemin sonucunu yazın: {mathQuestion.a} + {mathQuestion.b} = ?
-        </label>
-        <input
-          type="number"
-          value={mathAnswer}
-          onChange={(e) => setMathAnswer(e.target.value)}
-          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500"
-          required
-        />
+        <label className="block text-sm font-medium text-slate-400 mb-2">Bot değilseniz, lütfen şu işlemin sonucunu yazın: {mathQuestion.a} + {mathQuestion.b} = ?</label>
+        <input type="number" value={mathAnswer} onChange={(e) => setMathAnswer(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500" required />
       </div>
-
-      <button
-        type="submit"
-        disabled={isSubmitting || !text.trim()}
-        className={`w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${focusStyles}`}
-      >
+      <button type="submit" disabled={isSubmitting || !text.trim()} className={`w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${focusStyles}`}>
         {isSubmitting ? (
-          <>
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            Gönderiliyor...
-          </>
+          <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Gönderiliyor...</>
         ) : (
-          <>
-            <Send className="w-5 h-5" />
-            Fikri Gönder
-          </>
+          <><Send className="w-5 h-5" /> Fikri Gönder</>
         )}
       </button>
     </form>
@@ -569,7 +482,6 @@ export default function App() {
 
   const isAdmin = currentUser ? isUserAdmin(currentUser) : false;
 
-  // Kullanıcı durumu dinleyicisi
   useEffect(() => {
     if (!auth) return;
     let unsubscribeUser = null;
@@ -632,7 +544,6 @@ export default function App() {
     };
   }, []);
 
-  // Feedback ve kullanıcı listesi dinleyicileri
   useEffect(() => {
     if (!db) return;
     const unsubscribeFeedbacks = onSnapshot(
@@ -661,7 +572,6 @@ export default function App() {
     };
   }, [isAdmin]);
 
-  // Oyun açma
   const openGame = useCallback(async (game) => {
     if (!game) return;
     if (game.requiresPremium && !isUserPremium(currentUser)) {
@@ -697,7 +607,6 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Login işlemleri
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setAuthError("");
@@ -724,26 +633,14 @@ export default function App() {
       setPasswordInput("");
       setEmailInput("");
     } catch (error) {
-      console.error("Login error:", error);
       switch (error.code) {
-        case 'auth/email-already-in-use':
-          setAuthError("Bu e-posta adresi zaten kullanılıyor.");
-          break;
-        case 'auth/invalid-email':
-          setAuthError("Geçersiz e-posta adresi.");
-          break;
-        case 'auth/user-disabled':
-          setAuthError("Bu hesap devre dışı bırakılmış.");
-          break;
+        case 'auth/email-already-in-use': setAuthError("Bu e-posta adresi zaten kullanılıyor."); break;
+        case 'auth/invalid-email': setAuthError("Geçersiz e-posta adresi."); break;
+        case 'auth/user-disabled': setAuthError("Bu hesap devre dışı bırakılmış."); break;
         case 'auth/user-not-found':
-        case 'auth/wrong-password':
-          setAuthError("E-posta veya şifre hatalı.");
-          break;
-        case 'auth/too-many-requests':
-          setAuthError("Çok fazla başarısız deneme. Hesabınız geçici olarak kilitlendi.");
-          break;
-        default:
-          setAuthError("Giriş yapılırken bir hata oluştu.");
+        case 'auth/wrong-password': setAuthError("E-posta veya şifre hatalı."); break;
+        case 'auth/too-many-requests': setAuthError("Çok fazla başarısız deneme. Hesabınız kilitlendi."); break;
+        default: setAuthError("Giriş yapılırken bir hata oluştu.");
       }
     }
   };
@@ -754,7 +651,6 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
       setShowLoginModal(false);
     } catch (error) {
-      console.error("Google login error:", error);
       setAuthError(error.code === 'auth/popup-closed-by-user' ? "Giriş penceresi kapatıldı." : "Google ile giriş yapılamadı.");
     }
   };
@@ -769,12 +665,10 @@ export default function App() {
       setAuthError("Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.");
       setShowResetPassword(false);
     } catch (error) {
-      console.error("Password reset error:", error);
       setAuthError("Şifre sıfırlama e-postası gönderilemedi.");
     }
   };
 
-  // Satın alma talebi
   const handlePurchaseRequest = async (plan) => {
     if (!currentUser) {
       setShowPricingModal(false);
@@ -794,12 +688,10 @@ export default function App() {
         alert("Bu plan için ödeme linki henüz tanımlanmadı.");
       }
     } catch (error) {
-      console.error("Purchase request error:", error);
       alert("Satın alma talebi oluşturulurken bir hata oluştu.");
     }
   };
 
-  // Feedback gönderme
   const handleFeedbackSubmit = async (feedbackData) => {
     if (!currentUser) return;
     setIsSubmittingFeedback(true);
@@ -814,95 +706,126 @@ export default function App() {
         date: new Date().toLocaleDateString('tr-TR')
       });
     } catch (error) {
-      console.error("Feedback submit error:", error);
       throw error;
     } finally {
       setIsSubmittingFeedback(false);
     }
   };
 
-  // Oyun overlay
-  if (playingGame) {
-    const isLockedPremium = playingGame.requiresPremium && !isUserPremium(currentUser);
-    const secureUrl = getSecureGameUrl(playingGame.url);
-
-    return (
-      <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in zoom-in-95 duration-300" style={{ height: "calc(var(--vh, 1vh) * 100)" }}>
-        <div className="flex items-center justify-between px-4 md:px-6 py-2 md:py-3 bg-slate-950 border-b border-slate-800 shadow-xl">
-          <div className="flex items-center gap-2 md:gap-3 text-white font-bold truncate">
-            <div className="flex bg-slate-900 p-1.5 rounded-md border border-slate-800 shadow-sm shadow-orange-500/20">
-              <img src={LOGO_URL} alt="Logo" className="w-5 h-5 md:w-6 md:h-6 object-contain" />
+  const renderNavbar = () => (
+    <nav className="sticky top-0 z-50 w-full bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/60 shadow-sm transition-all">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 lg:h-20 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-6 lg:gap-10">
+          <button className={`flex items-center gap-2.5 cursor-pointer rounded-lg py-1 ${focusStyles} shrink-0`} onClick={() => setActiveTab("store")}>
+            <div className="bg-slate-900 border border-slate-800 p-1.5 lg:p-2 rounded-xl shadow-lg shadow-orange-500/10 flex items-center justify-center">
+              <img src={LOGO_URL} alt="Forge&Play Logo" className="w-6 h-6 lg:w-7 lg:h-7 object-contain" />
             </div>
-            <span className="inline tracking-tight">Forge<span className="text-orange-500">&</span>Play</span>
-            <span className="hidden sm:inline text-slate-600 select-none">|</span>
-            <span className="text-xs md:text-sm text-slate-300 font-medium truncate flex items-center gap-2">
-              <span className="hidden sm:inline">Oynanıyor:</span>
-              <span className="text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">{playingGame.title}</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            <button
-              onClick={() => setPlayingGame(null)}
-              autoFocus
-              className={`flex items-center gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}
-            >
-              <X className="w-4 h-4" />
-              <span className="hidden sm:inline">Oyundan Çık</span>
-            </button>
+            <div className="text-xl lg:text-2xl font-black tracking-tight text-white hidden sm:block">
+              Forge<span className="text-orange-500">&</span>Play
+            </div>
+          </button>
+          <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
+            {[
+              { id: "store", icon: Sparkles, label: "Mağaza" },
+              { id: "library", icon: Library, label: "Kütüphanem" },
+              { id: "lab", icon: FlaskConical, label: "Laboratuvar" },
+              { id: "feedback", icon: Lightbulb, label: "Fikir Kutusu" },
+            ].map((tab) => {
+              const TabIcon = tab.icon;
+              return (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm transition-all ${focusStyles} ${activeTab === tab.id ? "bg-slate-800/80 text-white shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"}`}>
+                  <TabIcon className="w-4 h-4" /> {tab.label}
+                </button>
+              );
+            })}
+
+            <div className="pl-2 border-l border-slate-800 ml-2">
+              <button onClick={() => setActiveTab("premium")} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-sm transition-all ${focusStyles} ${activeTab === "premium" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.4)] scale-105" : "bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 hover:shadow-[0_0_10px_rgba(245,158,11,0.2)]"}`}>
+                <Crown className="w-4 h-4" /> Premium Al
+              </button>
+            </div>
+
+            {isAdmin && (
+              <button onClick={() => setActiveTab("admin")} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-sm transition-all ml-2 border border-slate-700 ${focusStyles} ${activeTab === "admin" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-white hover:bg-slate-800"}`}>
+                <Lock className="w-4 h-4" /> Admin
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="flex-1 w-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
-          {isLockedPremium ? (
-            <div className="text-center space-y-6 p-6 max-w-md bg-slate-950 rounded-2xl border border-slate-800 shadow-2xl">
-              <Lock className="w-16 h-16 text-amber-500 mx-auto" />
-              <h2 className="text-2xl font-bold text-white">Premium İçerik</h2>
-              <p className="text-slate-400"><b>{playingGame.title}</b> içeriğini kullanabilmek için aktif aboneliğiniz olmalıdır.</p>
-              <div className="pt-4 space-y-3">
-                <button
-                  onClick={() => {setPlayingGame(null); setActiveTab("premium");}}
-                  className={`flex items-center justify-center gap-2 w-full px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-500 font-bold transition-colors ${focusStyles}`}
-                >
-                  <Sparkles className="w-5 h-5" /> Abonelik Planlarını Gör
-                </button>
-                <button
-                  onClick={() => setPlayingGame(null)}
-                  className={`w-full px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}
-                >
-                  Vazgeç
-                </button>
+        <div className="flex items-center gap-3 md:gap-5 shrink-0">
+          <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-orange-500 transition-colors">
+            <Search className="w-4 h-4 text-slate-400" />
+            <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Oyun ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-32 lg:w-48 placeholder-slate-500" />
+          </div>
+          <button className={`md:hidden p-2.5 bg-slate-900 text-slate-400 hover:text-white rounded-full border border-slate-800 ${focusStyles}`} onClick={() => setActiveTab("store")}>
+            <Search className="w-4 h-4" />
+          </button>
+
+          {authLoading ? (
+             <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          ) : currentUser ? (
+            <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
+              <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
+                <span className="text-sm font-bold text-white leading-tight">{currentUser.name || "Kullanıcı"}</span>
+                {isAdmin ? (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-amber-400">Yönetici</span>
+                ) : currentUser.pendingRequest ? (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-amber-500 animate-pulse">Onay Bekleniyor</span>
+                ) : isUserPremium(currentUser) ? (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-emerald-400">Premium ({getRemainingDays(currentUser.premiumEndDate)} Gün)</span>
+                ) : getRemainingDays(currentUser.premiumEndDate) !== null && getRemainingDays(currentUser.premiumEndDate) <= 0 ? (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-red-400">Süresi Bitti</span>
+                ) : (
+                  <span className="text-[10px] font-bold tracking-wide uppercase text-slate-500">Standart Profil</span>
+                )}
               </div>
-            </div>
-          ) : playingGame.url ? (
-            <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
-              <iframe
-                src={secureUrl}
-                className="w-full h-full border-none outline-none"
-                style={{ width: "100%", height: "100%", display: "block" }}
-                title={playingGame.title}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; microphone; camera; fullscreen"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
-                loading="lazy"
-              />
-            </div>
-          ) : (
-            <div className="text-center space-y-4 p-6">
-              <FlaskConical className="w-16 h-16 text-slate-700 mx-auto animate-bounce" />
-              <h2 className="text-xl md:text-2xl font-bold text-slate-400">Oyun Henüz Hazır Değil</h2>
-              <button
-                onClick={() => setPlayingGame(null)}
-                className={`mt-4 px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}
-              >
-                Geri Dön
+              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
+                {String(currentUser.name || "U").charAt(0).toUpperCase()}
+              </div>
+              <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
+                <LogOut className="w-4 h-4 lg:w-5 lg:h-5" />
               </button>
             </div>
+          ) : (
+            <button onClick={() => setShowLoginModal(true)} className={`flex items-center justify-center gap-2 px-4 py-2 md:px-5 md:py-2.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-orange-500/20 ${focusStyles} shrink-0`}>
+              <User className="w-4 h-4" />
+              <span className="hidden sm:inline">Giriş Yap / Kayıt Ol</span>
+              <span className="sm:hidden">Giriş</span>
+            </button>
           )}
         </div>
       </div>
-    );
-  }
+    </nav>
+  );
 
-  // Modal render'ları
+  const renderMobileBottomNav = () => (
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 z-50 pb-safe">
+      <div className="flex justify-around items-center p-2">
+        {[
+          { id: "store", icon: Sparkles, label: "Mağaza" },
+          { id: "library", icon: Library, label: "Kütüphane" },
+          { id: "premium", icon: Crown, label: "Premium" },
+          { id: "profile", icon: User, label: "Profilim" },
+        ].map(tab => {
+           const TabIcon = tab.icon;
+           return (
+             <button key={tab.id} onClick={() => currentUser && tab.id === "profile" ? setActiveTab("profile") : !currentUser && tab.id === "profile" ? setShowLoginModal(true) : setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? (tab.id === "premium" ? "text-amber-500" : "text-orange-500") : "text-slate-500 hover:text-slate-300"}`}>
+               <TabIcon className={`w-6 h-6 mb-1 ${tab.id === "premium" && activeTab !== "premium" ? "text-amber-500/70" : ""}`} />
+               <span className="text-[10px] font-bold">{tab.label}</span>
+             </button>
+           )
+        })}
+        {isAdmin && (
+          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
+            <Lock className="w-6 h-6 mb-1" />
+            <span className="text-[10px] font-bold">Admin</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   const renderLoginModal = () => (
     <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative">
@@ -982,6 +905,58 @@ export default function App() {
     </div>
   );
 
+  const renderPaymentCodeModal = () => {
+    if (!paymentIntent || !currentUser) return null;
+
+    const handleCopyCode = () => {
+      try {
+        navigator.clipboard.writeText(currentUser.paymentCode);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      } catch (err) {
+        console.error('Kopyalama hatası', err);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+          <button onClick={() => setPaymentIntent(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+          
+          <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/20">
+            <Wallet className="w-8 h-8 text-orange-500" />
+          </div>
+          
+          <h2 className="text-2xl font-black text-white mb-2">Çok Önemli Bir Adım!</h2>
+          <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+            Ödemenizin hesabınıza anında tanımlanabilmesi için Shopier ekranındaki <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded">"Sipariş Notu"</strong> kısmına aşağıdaki size özel kodu yazmanız gerekmektedir.
+          </p>
+          
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between shadow-inner">
+            <span className="text-2xl md:text-3xl font-mono font-black text-orange-400 tracking-wider pl-2">{currentUser.paymentCode}</span>
+            <button 
+              onClick={handleCopyCode}
+              className={`p-3 rounded-lg transition-colors flex items-center justify-center border ${isCopied ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700"}`}
+              title="Kodu Kopyala"
+            >
+              {isCopied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+            </button>
+          </div>
+
+          <button 
+            onClick={() => { window.open(paymentIntent.url, "_blank"); setPaymentIntent(null); }}
+            className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 text-lg transform hover:scale-[1.02]"
+          >
+            Kopyaladım, Ödemeye Geç
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderPricingCards = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
       {/* Paket 1 */}
@@ -1031,58 +1006,6 @@ export default function App() {
     </div>
   );
 
-  const renderPaymentCodeModal = () => {
-    if (!paymentIntent || !currentUser) return null;
-
-    const handleCopyCode = () => {
-      try {
-        navigator.clipboard.writeText(currentUser.paymentCode);
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
-      } catch (err) {
-        console.error('Kopyalama hatası', err);
-      }
-    };
-
-    return (
-      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
-          <button onClick={() => setPaymentIntent(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-
-          <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/20">
-            <Wallet className="w-8 h-8 text-orange-500" />
-          </div>
-
-          <h2 className="text-2xl font-black text-white mb-2">Çok Önemli Bir Adım!</h2>
-          <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-            Ödemenizin hesabınıza anında tanımlanabilmesi için Shopier ekranındaki <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded">"Sipariş Notu"</strong> kısmına aşağıdaki size özel kodu yazmanız gerekmektedir.
-          </p>
-
-          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between shadow-inner">
-            <span className="text-2xl md:text-3xl font-mono font-black text-orange-400 tracking-wider pl-2">{currentUser.paymentCode}</span>
-            <button
-              onClick={handleCopyCode}
-              className={`p-3 rounded-lg transition-colors flex items-center justify-center border ${isCopied ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700"}`}
-              title="Kodu Kopyala"
-            >
-              {isCopied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
-            </button>
-          </div>
-
-          <button
-            onClick={() => { window.open(paymentIntent.url, "_blank"); setPaymentIntent(null); }}
-            className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 text-lg transform hover:scale-[1.02]"
-          >
-            Kopyaladım, Ödemeye Geç
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   const renderPricingModal = () => (
     <div className="fixed inset-0 z-[250] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto">
@@ -1104,7 +1027,6 @@ export default function App() {
     </div>
   );
 
-  // Sayfa render'ları
   const renderStore = () => {
     const slideList = featuredGames;
     return (
@@ -1138,7 +1060,7 @@ export default function App() {
                       </div>
                       <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{game.title}</h1>
                       <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{game.description}</p>
-
+                      
                       <div className="pt-2">
                         <LivePlayerCount base={game.basePlayers} />
                       </div>
@@ -1190,7 +1112,9 @@ export default function App() {
                   </div>
                   <div className="p-4 md:p-6 flex-1 flex flex-col z-10 bg-slate-900">
                     <p className="text-slate-400 text-xs md:text-sm line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 flex-1">{game.description}</p>
+                    
                     <LivePlayerCount base={game.basePlayers} />
+
                     <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-800">
                       <div className="flex flex-col">
                         <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
@@ -1254,10 +1178,10 @@ export default function App() {
             </div>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center text-slate-500 h-full flex-1">
-            <Library className="w-12 h-12 mb-4 opacity-50" />
-            <p>Oynamak için sol taraftan bir oyun seçin</p>
-          </div>
+           <div className="flex flex-col items-center justify-center text-slate-500 h-full flex-1">
+             <Library className="w-12 h-12 mb-4 opacity-50" />
+             <p>Oynamak için sol taraftan bir oyun seçin</p>
+           </div>
         )}
       </div>
     </div>
@@ -1300,7 +1224,6 @@ export default function App() {
 
   const renderPremiumPage = () => (
     <div className="space-y-12 md:space-y-16 animate-in fade-in duration-500 max-w-6xl mx-auto">
-      {/* Hero Alanı */}
       <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-amber-500/30 shadow-[0_0_40px_rgba(245,158,11,0.1)] text-center p-8 md:p-16">
         <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 pointer-events-none"></div>
         <div className="relative z-10">
@@ -1312,7 +1235,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Avantajlar Grid */}
       <div>
         <div className="text-center mb-10">
           <h2 className="text-2xl md:text-3xl font-bold text-white">Neden Premium?</h2>
@@ -1323,19 +1245,21 @@ export default function App() {
             { icon: Crown, title: "Özel Rozet", desc: "Profilinizde ve skor tablolarında size özel altın rengi Premium rozetini taşıyın.", color: "text-amber-400", bg: "bg-amber-500/10" },
             { icon: Zap, title: "Erken Erişim", desc: "Laboratuvarda geliştirilen yeni oyunları herkesden önce ilk siz deneyin.", color: "text-blue-400", bg: "bg-blue-500/10" },
             { icon: HeartHandshake, title: "Projeye Destek", desc: "Bağımsız geliştiriciye destek olarak platformun daha hızlı büyümesini sağlayın.", color: "text-rose-400", bg: "bg-rose-500/10" },
-          ].map((feature, i) => (
-            <div key={i} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col items-center text-center hover:border-slate-700 transition-colors">
-              <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 ${feature.bg}`}>
-                <feature.icon className={`w-7 h-7 ${feature.color}`} />
+          ].map((feature, i) => {
+            const FeatureIcon = feature.icon;
+            return (
+              <div key={i} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col items-center text-center hover:border-slate-700 transition-colors">
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 ${feature.bg}`}>
+                  <FeatureIcon className={`w-7 h-7 ${feature.color}`} />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">{feature.title}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{feature.desc}</p>
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">{feature.title}</h3>
-              <p className="text-sm text-slate-400 leading-relaxed">{feature.desc}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {/* Satın Alma Adımları */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12">
         <h2 className="text-2xl md:text-3xl font-bold text-white text-center mb-10">Nasıl Premium Olurum?</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
@@ -1361,7 +1285,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Pricing Cards */}
       <div className="pt-8">
         <div className="text-center mb-10">
           <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Maceraya Başla</h2>
@@ -1431,7 +1354,7 @@ export default function App() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-800">
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
               <div className="text-slate-500 text-xs font-bold uppercase mb-1">Oynanan Oyun</div>
-              <div className="text-2xl font-black text-white">{currentUser.playCount || 0}</div>
+              <div className="text-2xl font-black text-white">{Number(currentUser.playCount || 0)}</div>
             </div>
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
               <div className="text-slate-500 text-xs font-bold uppercase mb-1">Global Sıra</div>
@@ -1441,7 +1364,7 @@ export default function App() {
             </div>
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
               <div className="text-slate-500 text-xs font-bold uppercase mb-1">Fikir Önerisi</div>
-              <div className="text-2xl font-black text-white">{userFeedbacks.length}</div>
+              <div className="text-2xl font-black text-white">{Number(userFeedbacks.length || 0)}</div>
             </div>
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center flex flex-col justify-center items-center">
               {!isPremium && <button onClick={() => setActiveTab("premium")} className="text-orange-500 hover:text-orange-400 font-bold text-sm transition-colors">Premium Al</button>}
@@ -1454,17 +1377,20 @@ export default function App() {
               <Star className="w-4 h-4 text-orange-500" /> Kazanılan Rozetler
             </h3>
             <div className="flex flex-wrap gap-4">
-              {userBadges.map(badge => (
-                <div key={badge.id} className={`flex items-center gap-3 p-3 pr-5 rounded-2xl border ${badge.border} ${badge.bg} transition-all hover:scale-105 cursor-default`} title={badge.desc}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-950 border border-slate-800/50 shadow-inner">
-                    <badge.icon className={`w-5 h-5 ${badge.color}`} />
+              {userBadges.map(badge => {
+                const BadgeIcon = badge.icon;
+                return (
+                  <div key={badge.id} className={`flex items-center gap-3 p-3 pr-5 rounded-2xl border ${badge.border} ${badge.bg} transition-all hover:scale-105 cursor-default`} title={badge.desc}>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-950 border border-slate-800/50 shadow-inner">
+                      <BadgeIcon className={`w-5 h-5 ${badge.color}`} />
+                    </div>
+                    <div>
+                      <div className={`text-sm font-bold ${badge.color}`}>{badge.title}</div>
+                      <div className="text-[10px] text-slate-400">{badge.desc}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className={`text-sm font-bold ${badge.color}`}>{badge.title}</div>
-                    <div className="text-[10px] text-slate-400">{badge.desc}</div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1482,10 +1408,10 @@ export default function App() {
               userFeedbacks.map((fb) => (
                 <div key={fb.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col h-full">
                   <div className="flex justify-between items-start mb-3">
-                    <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded">{fb.game}</div>
-                    <div className="text-[10px] text-slate-500">{fb.date}</div>
+                    <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded">{String(fb.game || "")}</div>
+                    <div className="text-[10px] text-slate-500">{String(fb.date || "")}</div>
                   </div>
-                  <p className="text-sm text-slate-300 mb-4 flex-1">"{fb.text}"</p>
+                  <p className="text-sm text-slate-300 mb-4 flex-1">"{String(fb.text || "")}"</p>
                   <div className="mt-auto pt-3 border-t border-slate-800/50 flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-500">Durum:</span>
                     {fb.status === "onaylandi" && <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded border border-emerald-500/20">✅ Onaylandı</span>}
@@ -1502,58 +1428,13 @@ export default function App() {
     );
   };
 
-  const renderFeedback = () => (
-    <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center">
-        <Lightbulb className="w-16 h-16 text-orange-500 mx-auto mb-4" />
-        <h2 className="text-3xl font-black text-white mb-3">Fikir Kutusu</h2>
-        <p className="text-slate-400 text-sm mb-6 max-w-xl mx-auto">
-          Oyunlarımızla ilgili önerilerini, karşılaştığın sorunları veya aklındaki yeni fikirleri bizimle paylaş. Her fikir, platformu daha iyiye taşımamıza yardımcı olur.
-        </p>
-      </div>
-
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
-        {!currentUser ? (
-          <div className="text-center py-8">
-            <p className="text-slate-400 mb-4">Fikir göndermek için giriş yapmalısın.</p>
-            <button onClick={() => setShowLoginModal(true)} className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors">
-              Giriş Yap / Kayıt Ol
-            </button>
-          </div>
-        ) : (
-          <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
-        )}
-      </div>
-
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <MessageSquarePlus className="w-5 h-5 text-orange-500" /> Son Gönderilen Fikirler
-        </h3>
-        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-          {feedbacks.slice(0, 5).map(fb => (
-            <div key={fb.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded">{fb.game}</span>
-                <span className="text-[10px] text-slate-500">{fb.user}</span>
-              </div>
-              <p className="text-sm text-slate-300">{fb.text}</p>
-            </div>
-          ))}
-          {feedbacks.length === 0 && (
-            <p className="text-slate-500 text-center py-4">Henüz fikir gönderilmemiş.</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
   const renderAdminDashboard = () => {
     const approvePremiumTime = async (userId, planCode) => {
       let monthsToAdd = 1;
       if (planCode === "6A") monthsToAdd = 6;
       if (planCode === "1Y") monthsToAdd = 12;
       const u = usersList.find(user => user.id === userId);
-      if (!u) return;
+      if(!u) return;
       const base = u.premiumEndDate && new Date(u.premiumEndDate) > new Date() ? new Date(u.premiumEndDate) : new Date();
       base.setMonth(base.getMonth() + monthsToAdd);
       await updateDoc(doc(db, "users", userId), { premiumEndDate: base.toISOString(), pendingRequest: null });
@@ -1568,7 +1449,7 @@ export default function App() {
     };
 
     const deleteFeedback = async (id) => {
-      if (window.confirm("Bu fikri kalıcı olarak silmek istediğinize emin misiniz?")) {
+      if(window.confirm("Bu fikri kalıcı olarak silmek istediğinize emin misiniz?")) {
         await deleteDoc(doc(db, "feedbacks", id));
       }
     };
@@ -1616,15 +1497,15 @@ export default function App() {
                     return (
                       <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
                         <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-white">{user.name || "Kullanıcı"}</div>
-                          <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {user.paymentCode || "KOD-YOK"}</div>
+                           <div className="text-sm font-medium text-white">{user.name || "Kullanıcı"}</div>
+                           <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {user.paymentCode || "KOD-YOK"}</div>
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-400">{user.email || "E-posta Yok"}</td>
                         <td className="px-6 py-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            {isPending ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({user.pendingRequest})</span>
-                            ) : (
+                        <div className="flex flex-col items-center gap-1">
+                          {isPending ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">ÖDEME BEKLİYOR ({user.pendingRequest})</span>
+                          ) : (
                               <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${isPremium ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : remDays !== null && remDays <= 0 ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
                                 {isPremium ? "AKTİF" : remDays !== null && remDays <= 0 ? "SÜRESİ DOLDU" : "STANDART"}
                               </span>
@@ -1664,20 +1545,20 @@ export default function App() {
               <div key={fb.id} className={`bg-slate-900 border rounded-2xl p-6 flex flex-col ${fb.status === "beklemede" ? "border-orange-500/50 shadow-lg shadow-orange-500/10" : "border-slate-800"}`}>
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded inline-block mb-2">{fb.game}</div>
+                    <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded inline-block mb-2">{String(fb.game || "")}</div>
                     <div className="text-sm font-semibold text-white flex items-center gap-1.5">
-                      <User className="w-4 h-4 text-slate-500" /> {fb.user || "Anonim"}
+                      <User className="w-4 h-4 text-slate-500" /> {String(fb.user || "Anonim")}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="text-xs text-slate-500">{fb.date}</div>
+                    <div className="text-xs text-slate-500">{String(fb.date || "")}</div>
                     <button onClick={() => deleteFeedback(fb.id)} className="text-slate-500 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded transition-colors" title="Kalıcı Olarak Sil">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                     </button>
                   </div>
                 </div>
                 <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-slate-300 text-sm mb-6 flex-1 italic">
-                  "{fb.text}"
+                  "{String(fb.text || "")}"
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 justify-between items-center border-t border-slate-800/50 pt-4">
                   <a href={`mailto:${fb.email || ''}?subject=Forge&Play Fikir Kutusu Bildirimi&body=Merhaba ${fb.user}, fikriniz incelendi...`} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-2 rounded-lg w-full sm:w-auto justify-center transition-colors">
@@ -1697,115 +1578,6 @@ export default function App() {
       </div>
     );
   };
-
-  // Navigasyon çubukları
-  const renderNavbar = () => (
-    <nav className="sticky top-0 z-50 w-full bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/60 shadow-sm transition-all">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 lg:h-20 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-6 lg:gap-10">
-          <button className={`flex items-center gap-2.5 cursor-pointer rounded-lg py-1 ${focusStyles} shrink-0`} onClick={() => setActiveTab("store")}>
-            <div className="bg-slate-900 border border-slate-800 p-1.5 lg:p-2 rounded-xl shadow-lg shadow-orange-500/10 flex items-center justify-center">
-              <img src={LOGO_URL} alt="Forge&Play Logo" className="w-6 h-6 lg:w-7 lg:h-7 object-contain" />
-            </div>
-            <div className="text-xl lg:text-2xl font-black tracking-tight text-white hidden sm:block">
-              Forge<span className="text-orange-500">&</span>Play
-            </div>
-          </button>
-          <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
-            {[
-              { id: "store", icon: Sparkles, label: "Mağaza" },
-              { id: "library", icon: Library, label: "Kütüphanem" },
-              { id: "lab", icon: FlaskConical, label: "Laboratuvar" },
-              { id: "feedback", icon: Lightbulb, label: "Fikir Kutusu" },
-            ].map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm transition-all ${focusStyles} ${activeTab === tab.id ? "bg-slate-800/80 text-white shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"}`}>
-                <tab.icon className="w-4 h-4" /> {tab.label}
-              </button>
-            ))}
-
-            <div className="pl-2 border-l border-slate-800 ml-2">
-              <button onClick={() => setActiveTab("premium")} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-sm transition-all ${focusStyles} ${activeTab === "premium" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.4)] scale-105" : "bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 hover:shadow-[0_0_10px_rgba(245,158,11,0.2)]"}`}>
-                <Crown className="w-4 h-4" /> Premium Al
-              </button>
-            </div>
-
-            {isAdmin && (
-              <button onClick={() => setActiveTab("admin")} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-sm transition-all ml-2 border border-slate-700 ${focusStyles} ${activeTab === "admin" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-white hover:bg-slate-800"}`}>
-                <Lock className="w-4 h-4" /> Admin
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 md:gap-5 shrink-0">
-          <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-orange-500 transition-colors">
-            <Search className="w-4 h-4 text-slate-400" />
-            <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Oyun ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-32 lg:w-48 placeholder-slate-500" />
-          </div>
-          <button className={`md:hidden p-2.5 bg-slate-900 text-slate-400 hover:text-white rounded-full border border-slate-800 ${focusStyles}`} onClick={() => setActiveTab("store")}>
-            <Search className="w-4 h-4" />
-          </button>
-
-          {authLoading ? (
-            <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          ) : currentUser ? (
-            <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
-              <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
-                <span className="text-sm font-bold text-white leading-tight">{currentUser.name || "Kullanıcı"}</span>
-                {isAdmin ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-amber-400">Yönetici</span>
-                ) : currentUser.pendingRequest ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-amber-500 animate-pulse">Onay Bekleniyor</span>
-                ) : isUserPremium(currentUser) ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-emerald-400">Premium ({getRemainingDays(currentUser.premiumEndDate)} Gün)</span>
-                ) : getRemainingDays(currentUser.premiumEndDate) !== null && getRemainingDays(currentUser.premiumEndDate) <= 0 ? (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-red-400">Süresi Bitti</span>
-                ) : (
-                  <span className="text-[10px] font-bold tracking-wide uppercase text-slate-500">Standart Profil</span>
-                )}
-              </div>
-              <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
-                {String(currentUser.name || "U").charAt(0).toUpperCase()}
-              </div>
-              <button onClick={() => signOut(auth)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" title="Çıkış Yap">
-                <LogOut className="w-4 h-4 lg:w-5 lg:h-5" />
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setShowLoginModal(true)} className={`flex items-center justify-center gap-2 px-4 py-2 md:px-5 md:py-2.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-orange-500/20 ${focusStyles} shrink-0`}>
-              <User className="w-4 h-4" />
-              <span className="hidden sm:inline">Giriş Yap / Kayıt Ol</span>
-              <span className="sm:hidden">Giriş</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </nav>
-  );
-
-  const renderMobileBottomNav = () => (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 z-50 pb-safe">
-      <div className="flex justify-around items-center p-2">
-        {[
-          { id: "store", icon: Sparkles, label: "Mağaza" },
-          { id: "library", icon: Library, label: "Kütüphane" },
-          { id: "premium", icon: Crown, label: "Premium" },
-          { id: "profile", icon: User, label: "Profilim" },
-        ].map(tab => (
-          <button key={tab.id} onClick={() => currentUser && tab.id === "profile" ? setActiveTab("profile") : !currentUser && tab.id === "profile" ? setShowLoginModal(true) : setActiveTab(tab.id)} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === tab.id ? (tab.id === "premium" ? "text-amber-500" : "text-orange-500") : "text-slate-500 hover:text-slate-300"}`}>
-            <tab.icon className={`w-6 h-6 mb-1 ${tab.id === "premium" && activeTab !== "premium" ? "text-amber-500/70" : ""}`} />
-            <span className="text-[10px] font-bold">{tab.label}</span>
-          </button>
-        ))}
-        {isAdmin && (
-          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
-            <Lock className="w-6 h-6 mb-1" />
-            <span className="text-[10px] font-bold">Admin</span>
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
