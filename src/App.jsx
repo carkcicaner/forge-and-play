@@ -456,6 +456,7 @@ export default function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [paymentIntent, setPaymentIntent] = useState(null);
+  const [premiumWarningGame, setPremiumWarningGame] = useState(null); // YENİ: Premium Oyun Uyarı Modalı State'i
   const [isCopied, setIsCopied] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -583,11 +584,23 @@ export default function App() {
     const unsubscribeFeedbacks = onSnapshot(
       query(collection(db, "feedbacks"), orderBy("createdAt", "desc")),
       (snapshot) => {
-        const fbList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
-        }));
+        const fbList = snapshot.docs.map(doc => {
+          const data = doc.data();
+          // Çökme hatasına karşı özel tarih formatlama kontrolü (serverTimestamp hatası)
+          let dateStr = new Date().toISOString();
+          if (data.createdAt) {
+            if (typeof data.createdAt.toDate === 'function') {
+              dateStr = data.createdAt.toDate().toISOString();
+            } else if (data.createdAt instanceof Date) {
+              dateStr = data.createdAt.toISOString();
+            }
+          }
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: dateStr
+          };
+        });
         setFeedbacks(fbList);
       },
       console.error
@@ -647,23 +660,29 @@ export default function App() {
     }
   };
 
+  // Oyun Açma Mantığı - Çökme olmadan Premium Kontrolü
   const openGame = useCallback(async (game) => {
     if (!game) return;
+    
+    // Eğer oyun premium ise ve kullanıcı premium değilse, özel uyarı popup'ını aç
     if (game.requiresPremium && !isUserPremium(currentUser)) {
-      setShowPricingModal(true);
+      setPremiumWarningGame(game);
       return;
     }
+    
     if (!game.url) {
       alert("Bu oyun henüz yayında değil.");
       return;
     }
+    
     setPlayingGame(game);
+    
     if (currentUser) {
       try {
         await updateDoc(doc(db, "users", currentUser.id), {
           playCount: (Number(currentUser.playCount) || 0) + 1,
-          lastPlayedGameName: game.title, 
-          lastPlayed: serverTimestamp()
+          lastPlayedGameName: game.title
+          // lastPlayed: serverTimestamp() // Çökmeyi önlemek için bu anlık olarak kaldırıldı
         });
         setCurrentUser(prev => ({
           ...prev,
@@ -794,11 +813,39 @@ export default function App() {
   };
 
   /* ---------------------------------------------
+     YENİ: PREMIUM OYUN UYARI POPUP'I
+  ---------------------------------------------- */
+  const renderPremiumWarningModal = () => {
+    if (!premiumWarningGame) return null;
+    return (
+      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+           <button onClick={() => setPremiumWarningGame(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
+             <X className="w-5 h-5" />
+           </button>
+           <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
+           <h2 className="text-2xl font-black text-white mb-2">Premium'a Özel İçerik</h2>
+           <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+             Bu harika oyun Premium üyelere özeldir. <b>{String(premiumWarningGame.title)}</b> oyununa erişmek ve reklamsız bir deneyim yaşamak için hemen avantajları inceleyin.
+           </p>
+           <div className="flex flex-col gap-3">
+             <button onClick={() => { setPremiumWarningGame(null); setShowPricingModal(true); }} className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">
+               Premium Paketleri İncele
+             </button>
+             <button onClick={() => setPremiumWarningGame(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
+               Vazgeç
+             </button>
+           </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* ---------------------------------------------
      YENİ: OYUN EKRANI EKLENTİLERİ (TAM EKRAN, YÜKLENİYOR)
   ---------------------------------------------- */
   const renderPlayerOverlay = () => {
     if (!playingGame) return null;
-    const isLockedPremium = playingGame.requiresPremium && !isUserPremium(currentUser);
     const secureUrl = getSecureGameUrl(playingGame.url);
 
     const toggleFullScreen = () => {
@@ -846,54 +893,19 @@ export default function App() {
 
         {/* Content */}
         <div className="flex-1 w-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
-          {isLockedPremium ? (
-            <div className="text-center space-y-6 p-6 max-w-md bg-slate-950 rounded-2xl border border-slate-800 shadow-2xl z-10">
-              <Lock className="w-16 h-16 text-amber-500 mx-auto" />
-              <h2 className="text-2xl font-bold text-white">Premium İçerik</h2>
-              <p className="text-slate-400"><b>{String(playingGame.title)}</b> içeriğini kullanabilmek için aktif aboneliğiniz olmalıdır.</p>
-              <div className="pt-4 space-y-3">
-                <button
-                  onClick={() => { setPlayingGame(null); setActiveTab("premium"); }}
-                  className={`flex items-center justify-center gap-2 w-full px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-500 font-bold transition-colors ${focusStyles}`}
-                >
-                  <Sparkles className="w-5 h-5" /> Abonelik Planlarını Gör
-                </button>
-                <button
-                  onClick={() => setPlayingGame(null)}
-                  className={`w-full px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}
-                >
-                  Vazgeç
-                </button>
-              </div>
-            </div>
-          ) : playingGame.url ? (
-            <>
-              {/* Yükleniyor Animasyonu (Arka Planda) */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center z-0 bg-slate-950">
-                 <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin mb-4"></div>
-                 <div className="text-orange-500 font-bold animate-pulse text-sm">Oyun Motoru Yükleniyor...</div>
-              </div>
-              <iframe
-                src={secureUrl}
-                className="absolute inset-0 w-full h-full border-none outline-none z-10 bg-transparent"
-                title={playingGame.title}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; microphone; camera; fullscreen"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-downloads"
-                loading="lazy"
-              />
-            </>
-          ) : (
-            <div className="text-center space-y-4 p-6 z-10">
-              <FlaskConical className="w-16 h-16 text-slate-700 mx-auto animate-bounce" />
-              <h2 className="text-xl md:text-2xl font-bold text-slate-400">Oyun Henüz Hazır Değil</h2>
-              <button
-                onClick={() => setPlayingGame(null)}
-                className={`mt-4 px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold ${focusStyles}`}
-              >
-                Geri Dön
-              </button>
-            </div>
-          )}
+          {/* Yükleniyor Animasyonu (Arka Planda) */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-0 bg-slate-950">
+             <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin mb-4"></div>
+             <div className="text-orange-500 font-bold animate-pulse text-sm">Oyun Motoru Yükleniyor...</div>
+          </div>
+          <iframe
+            src={secureUrl}
+            className="absolute inset-0 w-full h-full border-none outline-none z-10 bg-transparent"
+            title={playingGame.title}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; microphone; camera; fullscreen"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-downloads"
+            loading="lazy"
+          />
         </div>
       </div>
     );
@@ -1274,7 +1286,7 @@ export default function App() {
                       </div>
 
                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
-                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); if (game.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); return; } openGame(game); }}>
+                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); openGame(game); }}>
                           <Play className="w-5 h-5 fill-current" />
                           {game.requiresPremium && !isUserPremium(currentUser) ? "Premium Al" : game.id === "monopoly-bank" ? "Sistemi Başlat" : "Hemen Oyna"}
                         </button>
@@ -1308,7 +1320,7 @@ export default function App() {
             {filteredGames.map((game) => {
               const locked = game.requiresPremium && !isUserPremium(currentUser);
               return (
-                <div key={game.id} tabIndex={0} onClick={() => { if (locked && game.url) { setShowPricingModal(true); return; } openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-orange-500/50 transition-all group hover:shadow-[0_0_30px_rgba(249,115,22,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
+                <div key={game.id} tabIndex={0} onClick={() => { openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-orange-500/50 transition-all group hover:shadow-[0_0_30px_rgba(249,115,22,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
                   <div className={`h-32 md:h-40 bg-gradient-to-br ${game.gradient} p-4 md:p-6 flex flex-col justify-between relative overflow-hidden`}>
                     {game.image && <img src={game.image} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay group-hover:opacity-60 transition-all transform group-hover:scale-110 duration-500 z-0 pointer-events-none" />}
                     <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity transform group-hover:scale-110 duration-500 z-10"><GameIcon iconKey={game.iconKey} className="w-12 h-12" /></div>
@@ -1384,7 +1396,7 @@ export default function App() {
                 </div>
               </div>
               <div className="mt-auto pt-8 border-t border-slate-800 flex items-center gap-3">
-                <button onClick={() => { if (selectedLibraryGame.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); } else { openGame(selectedLibraryGame); } }} className="flex-1 sm:flex-none px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
+                <button onClick={() => { openGame(selectedLibraryGame); }} className="flex-1 sm:flex-none px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
                   <Play className="w-5 h-5" />
                   {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
                 </button>
@@ -1589,7 +1601,6 @@ export default function App() {
             </div>
           </div>
           
-          {/* YENİ: Son Oynanan Oyun Bilgisi */}
           {currentUser.lastPlayedGameName && (
             <div className="mt-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 flex items-center justify-center gap-3">
                <Gamepad2 className="w-5 h-5 text-orange-500" />
@@ -1637,40 +1648,69 @@ export default function App() {
               })}
             </div>
           </div>
-        </div>
-
-        <div>
-          <h3 className="text-xl font-bold text-white mb-4 border-b border-slate-800 pb-3 flex items-center gap-2">
-            <Lightbulb className="w-5 h-5 text-orange-500" /> Benim Fikirlerim
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {userFeedbacks.length === 0 ? (
-              <div className="col-span-full p-8 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">
-                Henüz hiç fikir göndermedin. Platformu geliştirmemize yardımcı olmak için Fikir Kutusu'nu kullan!
+          
+          {/* YENİ: PREMIUM ÖZEL FİKİR KUTUSU */}
+          {isPremium && (
+            <div className="mt-8 pt-8 border-t border-slate-800">
+              <div className="bg-gradient-to-r from-indigo-900/20 to-slate-900 border border-indigo-500/20 rounded-3xl p-6 md:p-8">
+                <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                  <MessageSquarePlus className="w-5 h-5 text-indigo-400" /> Premium Öncelikli Fikir Kutusu
+                </h3>
+                <p className="text-sm text-slate-400 mb-6">Fikirleriniz doğrudan geliştirici ekibimize öncelikli olarak iletilir.</p>
+                <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
               </div>
-            ) : (
-              userFeedbacks.map((fb) => (
-                <div key={fb.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col h-full">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded">{String(fb.game || "")}</div>
-                    <div className="text-[10px] text-slate-500">{String(fb.date || "")}</div>
-                  </div>
-                  <p className="text-sm text-slate-300 mb-4 flex-1">"{String(fb.text || "")}"</p>
-                  <div className="mt-auto pt-3 border-t border-slate-800/50 flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-500">Durum:</span>
-                    {fb.status === "onaylandi" && <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded border border-emerald-500/20">✅ Onaylandı</span>}
-                    {fb.status === "reddedildi" && <span className="bg-red-500/10 text-red-400 text-[10px] font-bold px-2 py-1 rounded border border-red-500/20">❌ İptal Edildi</span>}
-                    {fb.status === "inceleniyor" && <span className="bg-amber-500/10 text-amber-400 text-[10px] font-bold px-2 py-1 rounded border border-amber-500/20">⏳ İnceleniyor</span>}
-                    {fb.status === "beklemede" && <span className="bg-slate-800 text-slate-400 text-[10px] font-bold px-2 py-1 rounded">Beklemede</span>}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+            </div>
+          )}
+
         </div>
       </div>
     );
   };
+
+  const renderFeedback = () => (
+    <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center">
+        <Lightbulb className="w-16 h-16 text-orange-500 mx-auto mb-4" />
+        <h2 className="text-3xl font-black text-white mb-3">Fikir Kutusu</h2>
+        <p className="text-slate-400 text-sm mb-6 max-w-xl mx-auto">
+          Oyunlarımızla ilgili önerilerini, karşılaştığın sorunları veya aklındaki yeni fikirleri bizimle paylaş. Her fikir, platformu daha iyiye taşımamıza yardımcı olur.
+        </p>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
+        {!currentUser ? (
+          <div className="text-center py-8">
+            <p className="text-slate-400 mb-4">Fikir göndermek için giriş yapmalısın.</p>
+            <button onClick={() => setShowLoginModal(true)} className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors">
+              Giriş Yap / Kayıt Ol
+            </button>
+          </div>
+        ) : (
+          <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
+        )}
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <MessageSquarePlus className="w-5 h-5 text-orange-500" /> Son Gönderilen Fikirler
+        </h3>
+        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+          {feedbacks.slice(0, 5).map(fb => (
+            <div key={fb.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded">{String(fb.game || "")}</span>
+                <span className="text-[10px] text-slate-500">{String(fb.user || "Anonim")}</span>
+              </div>
+              <p className="text-sm text-slate-300">{String(fb.text || "")}</p>
+            </div>
+          ))}
+          {feedbacks.length === 0 && (
+            <p className="text-slate-500 text-center py-4">Henüz fikir gönderilmemiş.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   const renderAdminDashboard = () => {
     const approvePremiumTime = async (userId, planCode) => {
@@ -1826,6 +1866,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
       {renderInstallGuideModal()}
+      {renderPremiumWarningModal()}
       {playingGame && renderPlayerOverlay()}
       {renderNavbar()}
       {showLoginModal && renderLoginModal()}
@@ -1847,8 +1888,11 @@ export default function App() {
             <span>© 2026 Forge&Play. Tüm hakları saklıdır.</span>
           </div>
           
-          {/* YENİ: APP STORE / PLAY STORE ÇOK YAKINDA */}
+          {/* YENİ: İLETİŞİM & APP STORE / PLAY STORE ÇOK YAKINDA */}
           <div className="flex items-center gap-4 mt-4 md:mt-0">
+             <a href="mailto:forgeandplay@gmail.com" className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-orange-400 transition-colors bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+               <Mail className="w-3.5 h-3.5"/> İletişim / Destek
+             </a>
              <span className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800"><Smartphone className="w-3.5 h-3.5"/> App Store'da Çok Yakında</span>
              <span className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800"><Play className="w-3.5 h-3.5"/> Play Store'da Çok Yakında</span>
           </div>
