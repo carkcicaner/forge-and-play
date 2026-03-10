@@ -30,7 +30,10 @@ import {
   Crown,
   Zap,
   HeartHandshake,
-  Star
+  Star,
+  Share2,
+  Download,
+  Smartphone
 } from "lucide-react";
 
 // --- FIREBASE IMPORTLARI ---
@@ -462,6 +465,11 @@ export default function App() {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
+  // --- PWA ve Paylaşım (Share) API State'leri ---
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+
   const featuredGames = useMemo(() => GAMES.filter(g => g.status === "Yayında"), []);
   const filteredGames = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -481,6 +489,25 @@ export default function App() {
   }, [usersList, adminSearch]);
 
   const isAdmin = currentUser ? isUserAdmin(currentUser) : false;
+
+  // --- PWA Kurulum Dinleyicisi ---
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Cihazın iOS olup olmadığını kontrol et (Manuel kurulum yönergesi için)
+    const isIosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isIosDevice && !isStandalone) {
+      setIsIOS(true);
+    }
+
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
 
   useEffect(() => {
     if (!auth) return;
@@ -571,6 +598,49 @@ export default function App() {
       if (unsubscribeUsers) unsubscribeUsers();
     };
   }, [isAdmin]);
+
+  // --- Paylaşım (Share API) ve Yükleme İşlemleri ---
+  const handleSharePlatform = async () => {
+    const shareData = {
+      title: 'Forge&Play Eğlence Platformu',
+      text: 'Harika parti ve masa oyunlarını arkadaşlarınla oynamak için Forge&Play tam sana göre! Hadi gel, DM grubunu kurup birlikte oynayalım.',
+      url: window.location.origin
+    };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch (err) { console.log("Paylaşım iptal edildi."); }
+    } else {
+      navigator.clipboard.writeText(shareData.url);
+      alert("Platform bağlantısı kopyalandı! Instagram veya TikTok üzerinden arkadaşlarına gönderebilirsin.");
+    }
+  };
+
+  const handleShareGame = async (game, e) => {
+    e?.stopPropagation(); // Kartın tıklanmasını engelle
+    const shareData = {
+      title: game.title,
+      text: `Forge&Play'de ${game.title} oynuyoruz! Sende gelsene, efsane sarıyor:`,
+      url: window.location.origin
+    };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch (err) { console.log("Paylaşım iptal edildi."); }
+    } else {
+      navigator.clipboard.writeText(shareData.url);
+      alert(`${game.title} oyun bağlantısı kopyalandı! Arkadaşlarına hemen gönder.`);
+    }
+  };
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setIsInstallable(false);
+      setDeferredPrompt(null);
+    } else if (isIOS) {
+      alert("📱 iOS Cihazlarda Kurulum:\n\n1. Tarayıcının alt menüsündeki 'Paylaş' (Kare içinden yukarı ok) ikonuna dokunun.\n2. Aşağı kaydırıp 'Ana Ekrana Ekle' seçeneğini bulun.\n3. 'Ekle' diyerek uygulamayı cihazınıza kısayol olarak kurun!");
+    } else {
+      alert("Cihazınız otomatik yüklemeyi desteklemiyor veya uygulama zaten yüklü. Tarayıcı menüsünden (sağ üstteki 3 nokta) 'Ana Ekrana Ekle'yi seçebilirsiniz.");
+    }
+  };
 
   const openGame = useCallback(async (game) => {
     if (!game) return;
@@ -754,6 +824,19 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3 md:gap-5 shrink-0">
+          
+          {/* YENİ: NAVİGASYONA EKLENEN İNDİRME VE PAYLAŞ BUTONLARI (MASAÜSTÜ) */}
+          <div className="hidden lg:flex items-center gap-2 border-r border-slate-800 pr-4 mr-2">
+             <button onClick={handleSharePlatform} className="text-slate-400 hover:text-orange-400 hover:bg-orange-500/10 p-2 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold" title="Arkadaşlarını Davet Et">
+               <Share2 className="w-4 h-4" /> Davet Et
+             </button>
+             {(isInstallable || isIOS) && (
+               <button onClick={handleInstallApp} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 p-2 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold" title="Ana Ekrana Ekle">
+                 <Download className="w-4 h-4" /> Yükle
+               </button>
+             )}
+          </div>
+
           <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-orange-500 transition-colors">
             <Search className="w-4 h-4 text-slate-400" />
             <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Oyun ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-32 lg:w-48 placeholder-slate-500" />
@@ -816,12 +899,6 @@ export default function App() {
              </button>
            )
         })}
-        {isAdmin && (
-          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
-            <Lock className="w-6 h-6 mb-1" />
-            <span className="text-[10px] font-bold">Admin</span>
-          </button>
-        )}
       </div>
     </div>
   );
@@ -1119,9 +1196,16 @@ export default function App() {
                       <div className="flex flex-col">
                         <span className="text-sm md:text-base font-semibold text-white">{game.price}</span>
                       </div>
-                      <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
-                        {game.url ? (locked ? "Premium Al" : "Oyna") : "İncele"}
-                      </button>
+                      
+                      {/* YENİ: PAYLAŞ İKONU EKLENDİ */}
+                      <div className="flex items-center gap-2">
+                         <button onClick={(e) => handleShareGame(game, e)} className="p-2 text-slate-400 hover:text-orange-400 hover:bg-orange-500/10 rounded-lg transition-colors" title="Oyunu Paylaş">
+                           <Share2 className="w-4 h-4 md:w-5 md:h-5" />
+                         </button>
+                         <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
+                           {game.url ? (locked ? "Premium Al" : "Oyna") : "İncele"}
+                         </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1169,10 +1253,13 @@ export default function App() {
                   <GameIcon iconKey={selectedLibraryGame.iconKey} className="w-10 h-10 text-white" />
                 </div>
               </div>
-              <div className="mt-auto pt-8 border-t border-slate-800">
-                <button onClick={() => { if (selectedLibraryGame.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); } else { openGame(selectedLibraryGame); } }} className="w-full sm:w-auto px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
+              <div className="mt-auto pt-8 border-t border-slate-800 flex items-center gap-3">
+                <button onClick={() => { if (selectedLibraryGame.requiresPremium && !isUserPremium(currentUser)) { setShowPricingModal(true); } else { openGame(selectedLibraryGame); } }} className="flex-1 sm:flex-none px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
                   <Play className="w-5 h-5" />
                   {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
+                </button>
+                <button onClick={() => handleShareGame(selectedLibraryGame)} className="px-5 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors border border-slate-700" title="Arkadaşlarına Gönder">
+                   <Share2 className="w-5 h-5" />
                 </button>
               </div>
             </div>
@@ -1369,6 +1456,26 @@ export default function App() {
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center flex flex-col justify-center items-center">
               {!isPremium && <button onClick={() => setActiveTab("premium")} className="text-orange-500 hover:text-orange-400 font-bold text-sm transition-colors">Premium Al</button>}
               {isPremium && <span className="text-emerald-500 font-bold text-sm">Ayrıcalıklısın!</span>}
+            </div>
+          </div>
+
+          {/* YENİ: Topluluğu Büyüt & Uygulamayı İndir Alanı */}
+          <div className="mt-8 pt-8 border-t border-slate-800">
+            <div className="bg-gradient-to-r from-orange-900/20 to-slate-900 border border-orange-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+               <div>
+                  <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2"><Share2 className="w-5 h-5 text-orange-500" /> Platformu Büyütelim!</h3>
+                  <p className="text-sm text-slate-400 max-w-md">Forge&Play oyunlarını arkadaşlarına gönder ve oyun gecelerini başlat. Uygulamayı ana ekrana ekleyerek tek tıkla ulaş.</p>
+               </div>
+               <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                 <button onClick={handleSharePlatform} className="flex-1 sm:flex-none px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+                   <Share2 className="w-4 h-4" /> Davet Et
+                 </button>
+                 {(isInstallable || isIOS) && (
+                   <button onClick={handleInstallApp} className="flex-1 sm:flex-none px-6 py-3 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-xl transition-colors border border-emerald-500/20 flex items-center justify-center gap-2">
+                     <Download className="w-4 h-4" /> Ana Ekrana Ekle
+                   </button>
+                 )}
+               </div>
             </div>
           </div>
 
