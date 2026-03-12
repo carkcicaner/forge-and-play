@@ -123,7 +123,7 @@ const GAMES = [
     iconKey: "user",
     url: "https://vampir-oyunu.vercel.app/",
     image: "https://i.ibb.co/KxP67Mm1/Ba-l-ks-z-4.png",
-    requiresPremium: false,
+    requiresPremium: true,
   },
   {
     id: "monopoly-bank",
@@ -168,7 +168,7 @@ const GAMES = [
     iconKey: "user",
     url: "https://pis7li-oyunu.vercel.app/",
     image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=800",
-    requiresPremium: false,
+    requiresPremium: true,
   },
   {
     id: "forge-play-quiz",
@@ -213,7 +213,7 @@ const GAMES = [
     iconKey: "film",
     url: null,
     image: "https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&q=80&w=800",
-    requiresPremium: false,
+    requiresPremium: true,
   },
 ];
 
@@ -259,7 +259,7 @@ const containsProfanity = (text) => {
 };
 
 /* ---------------------------------------------
-    YARDIMCI FONKSİYONLAR - GÜÇLENDİRİLMİŞ
+    YARDIMCI FONKSİYONLAR
 ---------------------------------------------- */
 const calculateRank = (playCount) => {
   const baseRank = 50000;
@@ -268,16 +268,10 @@ const calculateRank = (playCount) => {
 };
 
 const isUserAdmin = (user) => {
-  if (!user) return false;
+  if (!user || !user.email) return false;
   if (user.role === "admin") return true;
-  // Çok Agresif E-posta Kontrolü: Admin Paneline kesin giriş için
-  if (user.email) {
-     const mail = String(user.email).toLowerCase().trim();
-     if (mail === "forgeandplay@gmail.com" || mail === "carkci.caner@gmail.com" || ADMIN_EMAILS.includes(mail)) {
-        return true;
-     }
-  }
-  return false;
+  const userEmail = String(user.email).toLowerCase().trim();
+  return ADMIN_EMAILS.includes(userEmail);
 };
 
 const isUserPremium = (user) => {
@@ -475,8 +469,14 @@ export default function App() {
   const [playingGame, setPlayingGame] = useState(null);
   const [selectedLibraryGame, setSelectedLibraryGame] = useState(GAMES[0]);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState(false);
   const [paymentIntent, setPaymentIntent] = useState(null);
+  
+  // Modallar ve Deneme (Trial) State'leri
   const [premiumWarningGame, setPremiumWarningGame] = useState(null); 
+  const [trialPromptGame, setTrialPromptGame] = useState(null); 
+  const playTimerRef = useRef(null); // Gir-Çık önleme kalkanı için zamanlayıcı
+
   const [isCopied, setIsCopied] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -493,7 +493,7 @@ export default function App() {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
-  // --- PWA ve Paylaşım (Share) API State'leri ---
+  // --- PWA ve Paylaşım API State'leri ---
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
@@ -547,7 +547,7 @@ export default function App() {
           const userRef = doc(db, "users", firebaseUser.uid);
           unsubscribeUser = onSnapshot(userRef, async (docSnap) => {
             const userEmail = firebaseUser.email?.toLowerCase().trim() || "";
-            const isAdminEmail = ADMIN_EMAILS.includes(userEmail);
+            const isAdminEmail = ADMIN_EMAILS.includes(userEmail) || userEmail === "forgeandplay@gmail.com" || userEmail === "carkci.caner@gmail.com";
 
             if (docSnap.exists()) {
               const userData = docSnap.data();
@@ -563,7 +563,6 @@ export default function App() {
                 await updateDoc(userRef, updates).catch(console.error);
                 Object.assign(userData, updates);
               }
-              // Güvenlik & Stabilite: Email'i her zaman güvenli tut
               setCurrentUser({ id: firebaseUser.uid, email: userEmail, ...userData });
             } else {
               const paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
@@ -575,6 +574,7 @@ export default function App() {
                 premiumEndDate: isAdminEmail ? new Date("2099-01-01").toISOString() : null,
                 pendingRequest: null,
                 playCount: 0,
+                premiumTrialsUsed: 0, // YENİ: Deneme hakkı sıfırdan başlar
                 paymentCode,
                 createdAt: serverTimestamp(),
                 lastLogin: serverTimestamp()
@@ -639,7 +639,6 @@ export default function App() {
     };
   }, [isAdmin]);
 
-  // --- Paylaşım (Share API) ve Yükleme İşlemleri ---
   const handleSharePlatform = async () => {
     const shareData = {
       title: 'Forge&Play Eğlence Platformu',
@@ -680,38 +679,70 @@ export default function App() {
     }
   };
 
-  // Oyun Açma Mantığı
+  // --- YENİ: OYUNA DEVAM ET VE SÜREYİ ÖLÇ ---
+  const proceedToGame = useCallback((game, isTrial = false) => {
+    setTrialPromptGame(null);
+    setPlayingGame(game);
+
+    // Eğer eski bir zamanlayıcı varsa iptal et
+    if (playTimerRef.current) clearTimeout(playTimerRef.current);
+
+    // 60 saniyelik "Gir-Çık Koruması" (Sadece 1dk kalırsa oynamış sayılır)
+    playTimerRef.current = setTimeout(async () => {
+      if (currentUser) {
+        try {
+          const updates = {
+            playCount: (Number(currentUser.playCount) || 0) + 1,
+            lastPlayedGameName: game.title,
+            lastPlayed: serverTimestamp()
+          };
+          if (isTrial) {
+            updates.premiumTrialsUsed = (Number(currentUser.premiumTrialsUsed) || 0) + 1;
+          }
+          await updateDoc(doc(db, "users", currentUser.id), updates);
+          
+          setCurrentUser(prev => prev ? ({
+            ...prev,
+            playCount: (Number(prev.playCount) || 0) + 1,
+            lastPlayedGameName: game.title,
+            premiumTrialsUsed: isTrial ? (Number(prev.premiumTrialsUsed) || 0) + 1 : prev.premiumTrialsUsed
+          }) : null);
+        } catch (error) {
+          console.error("Play count update failed:", error);
+        }
+      }
+    }, 60000); // 60.000 ms = 60 Saniye
+  }, [currentUser]);
+
+  // Oyun Açma Mantığı (Deneme Hakkı Kontrolü Eklendi)
   const openGame = useCallback(async (game) => {
     if (!game) return;
-    
-    if (game.requiresPremium && !isUserPremium(currentUser)) {
-      setPremiumWarningGame(game);
-      return;
-    }
     
     if (!game.url) {
       alert("Bu oyun henüz yayında değil.");
       return;
     }
-    
-    setPlayingGame(game);
-    
-    if (currentUser) {
-      try {
-        await updateDoc(doc(db, "users", currentUser.id), {
-          playCount: (Number(currentUser.playCount) || 0) + 1,
-          lastPlayedGameName: game.title
-        });
-        setCurrentUser(prev => prev ? ({
-          ...prev,
-          playCount: (Number(prev.playCount) || 0) + 1,
-          lastPlayedGameName: game.title
-        }) : null);
-      } catch (error) {
-        console.error("Play count update failed:", error);
+
+    if (game.requiresPremium && !isUserPremium(currentUser)) {
+      if (!currentUser) {
+        setShowLoginModal(true);
+        return;
       }
+      
+      const trialsUsed = Number(currentUser?.premiumTrialsUsed || 0);
+      if (trialsUsed >= 3) {
+        // Hakları bitmiş, Premium satın alma uyarısını göster
+        setPremiumWarningGame(game);
+      } else {
+        // Deneme hakkı var, hediye uyarısını göster
+        setTrialPromptGame(game);
+      }
+      return;
     }
-  }, [currentUser]);
+    
+    // Oyun normal (ücretsiz) veya kullanıcı Premium
+    proceedToGame(game, false);
+  }, [currentUser, proceedToGame]);
 
   const getSecureGameUrl = useCallback((baseUrl) => {
     if (!baseUrl) return "";
@@ -789,7 +820,8 @@ export default function App() {
 
   const handlePurchaseRequest = async (plan) => {
     if (!currentUser) {
-      setPremiumWarningGame(null); // Popup kapatılıyor
+      setPremiumWarningGame(null);
+      setActiveTab("premium");
       setShowLoginModal(true);
       return;
     }
@@ -800,7 +832,8 @@ export default function App() {
       });
       const paymentUrl = PAYMENT_LINKS[plan];
       if (paymentUrl) {
-        setPremiumWarningGame(null); // Popup kapatılıyor
+        setPremiumWarningGame(null);
+        setShowPricingModal(false);
         setPaymentIntent({ url: paymentUrl, plan });
       } else {
         alert("Bu plan için ödeme linki henüz tanımlanmadı.");
@@ -831,35 +864,65 @@ export default function App() {
   };
 
   /* ---------------------------------------------
-     ÇÖZÜM 1: PREMIUM PAKETLERİ İNCELE (BİRLEŞTİRİLMİŞ EKRAN)
+     YENİ: HEDİYE DENEME HAKKI MODALI
   ---------------------------------------------- */
-  const renderPremiumWarningModal = () => {
-    if (!premiumWarningGame) return null;
-    
-    // Popup kapatma
-    const closeWarning = () => setPremiumWarningGame(null);
+  const renderTrialPromptModal = () => {
+    if (!trialPromptGame || !currentUser) return null;
+    const trialsUsed = Number(currentUser.premiumTrialsUsed || 0);
+    const remaining = 3 - trialsUsed;
 
     return (
-      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
-        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto">
-           <button onClick={closeWarning} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
+      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+           <button onClick={() => setTrialPromptGame(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
              <X className="w-5 h-5" />
            </button>
 
-           <div className="text-center mb-8">
-             <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-             <h2 className="text-3xl md:text-4xl font-black text-white mb-2">Premium'a Özel İçerik</h2>
-             <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto">
-               Bu harika oyun Premium üyelere özeldir. <b>{String(premiumWarningGame.title)}</b> oyununa erişmek ve platformdaki tüm sınırları kaldırmak için hemen aşağıdaki avantajlı paketlerden birini seçin.
-             </p>
+           <Sparkles className="w-16 h-16 text-emerald-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
+           <h2 className="text-2xl font-black text-white mb-2">Hediye Premium Denemesi!</h2>
+           <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+             Yeni üyelerimize özel olarak Premium oyunları ücretsiz test etme hakkınız var. <b>{String(trialPromptGame.title)}</b> oyununu oynamak isterseniz 1 hakkınız kullanılacaktır. <i>(Oyun içinde 1 dakikadan az kalırsanız hakkınız eksilmez!)</i>
+           </p>
+           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6">
+              <span className="text-emerald-400 font-bold text-lg">Kalan Hakkınız: {remaining} / 3</span>
            </div>
            
-           {/* Modal içinde Paketler Gösteriliyor */}
-           {renderPricingCards()}
+           <div className="flex flex-col gap-3">
+             <button onClick={() => proceedToGame(trialPromptGame, true)} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">
+               Deneme Hakkımı Kullan
+             </button>
+             <button onClick={() => setTrialPromptGame(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
+               Şimdilik Sakla
+             </button>
+           </div>
+        </div>
+      </div>
+    );
+  };
 
-           {!currentUser && (
-             <div className="mt-8 text-center text-sm text-slate-400">Satın almak için önce <button className="text-orange-500 font-bold hover:text-orange-400" onClick={() => { closeWarning(); setShowLoginModal(true); }}>giriş yap</button>.</div>
-           )}
+  /* ---------------------------------------------
+     PREMIUM BİTİŞ (ÖDEME DUVARI) MODALI
+  ---------------------------------------------- */
+  const renderPremiumWarningModal = () => {
+    if (!premiumWarningGame) return null;
+    return (
+      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
+        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto text-center">
+           <button onClick={() => setPremiumWarningGame(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
+             <X className="w-5 h-5" />
+           </button>
+           <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
+           <h2 className="text-3xl md:text-4xl font-black text-white mb-2">Deneme Haklarınız Bitti</h2>
+           <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto mb-8">
+             Ücretsiz deneme haklarınızı tamamladınız. <b>{String(premiumWarningGame.title)}</b> oyununa erişmeye devam etmek ve platformdaki tüm sınırları kaldırmak için Premium avantajlarına göz atın.
+           </p>
+           
+           <button onClick={() => { setPremiumWarningGame(null); setActiveTab("premium"); }} className="w-full md:w-auto px-10 py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg transform hover:scale-[1.02] text-lg">
+               Premium Paketleri İncele
+           </button>
+           <button onClick={() => setPremiumWarningGame(null)} className="block w-full md:w-auto mx-auto mt-4 px-8 py-3 text-slate-400 hover:text-white transition-colors font-bold">
+               Vazgeç
+           </button>
         </div>
       </div>
     );
@@ -885,7 +948,6 @@ export default function App() {
 
     return (
       <div className="fixed inset-0 z-[500] bg-black flex flex-col animate-in fade-in zoom-in-95 duration-300" style={{ height: "100dvh" }}>
-        {/* Header */}
         <div className="flex items-center justify-between px-3 md:px-6 py-2 bg-slate-950 border-b border-slate-800 shadow-xl z-20">
           <div className="flex items-center gap-2 md:gap-3 text-white font-bold truncate">
             <div className="flex bg-slate-900 p-1.5 rounded-md border border-slate-800 shadow-sm shadow-orange-500/20">
@@ -905,6 +967,7 @@ export default function App() {
             <button
               onClick={() => {
                 setPlayingGame(null);
+                if (playTimerRef.current) clearTimeout(playTimerRef.current); // Gir-Çık yaparsa timer iptal
                 if (document.fullscreenElement) document.exitFullscreen();
               }}
               className={`flex items-center gap-1.5 md:gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}
@@ -915,7 +978,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 w-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
           <div className="absolute inset-0 flex flex-col items-center justify-center z-0 bg-slate-950">
              <div className="w-12 h-12 border-4 border-orange-500/30 border-t-orange-500 rounded-full animate-spin mb-4"></div>
@@ -1053,17 +1115,11 @@ export default function App() {
               <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
                 {String(currentUser.name || "U").charAt(0).toUpperCase()}
               </div>
-              
-              {/* ÇÖZÜM 2: ÇIKIŞ YAP (LOGOUT) GÜVENLİĞİ */}
               <button 
-                onClick={async () => {
+                onClick={() => {
                   setActiveTab("store");
                   setPlayingGame(null);
-                  try {
-                    await signOut(auth);
-                  } catch (err) {
-                    console.error("Çıkış hatası", err);
-                  }
+                  signOut(auth).catch(err => console.error("Çıkış hatası", err));
                 }} 
                 className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" 
                 title="Çıkış Yap"
@@ -1908,6 +1964,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
       {renderInstallGuideModal()}
+      {renderTrialPromptModal()}
       {renderPremiumWarningModal()}
       {playingGame && renderPlayerOverlay()}
       {renderNavbar()}
@@ -1929,7 +1986,6 @@ export default function App() {
             <span>© 2026 Forge&Play. Tüm hakları saklıdır.</span>
           </div>
           
-          {/* ÇÖZÜM 5: İLETİŞİM & APP STORE / PLAY STORE ÇOK YAKINDA */}
           <div className="flex items-center gap-4 mt-4 md:mt-0">
              <a href="mailto:forgeandplay@gmail.com" className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-orange-400 transition-colors bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
                <Mail className="w-3.5 h-3.5"/> İletişim / Destek
