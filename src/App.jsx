@@ -107,39 +107,9 @@ if (isFirebaseConfigured) {
 }
 
 /* ---------------------------------------------
-    OYUN VERİLERİ (MOCK DATA)
+    OYUN VERİLERİ (YENİ SIRALAMA VE EKLENTİLER)
 ---------------------------------------------- */
 const GAMES = [
-  {
-    id: "vampir-koylu",
-    title: "Vampir Köylü",
-    status: "Yayında",
-    type: "live",
-    tags: ["Parti", "Çok Oyunculu", "Gizem"],
-    description: "Konuş, şüphelen, oyla: Vampirleri bul, kasabayı kurtar. Yönetici kasabayı kurar, vampir sayısını belirler ve kaderleri dağıtır; oyun gece–gündüz döngüsü ile ilerler.",
-    price: "Ücretsiz Oyna",
-    basePlayers: 1240,
-    gradient: "from-red-900 via-rose-950 to-black",
-    iconKey: "user",
-    url: "https://vampir-oyunu.vercel.app/",
-    image: "https://i.ibb.co/KxP67Mm1/Ba-l-ks-z-4.png",
-    requiresPremium: true,
-  },
-  {
-    id: "monopoly-bank",
-    title: "Monopoly Dijital Banka",
-    status: "Yayında",
-    type: "live",
-    tags: ["Araç", "Masa Oyunu", "Finans"],
-    description: "Odanı kur, arkadaşlarını davet et, dijital Monopoly rekabetini başlat. Kağıt paralarla uğraşmaya son! Arkadaşlarınızla Monopoly oynarken kasanızı dijital olarak yönetin.",
-    price: "Premium İçerik",
-    basePlayers: 345,
-    gradient: "from-emerald-900 via-teal-950 to-black",
-    iconKey: "wallet",
-    url: "https://siprayt-monopoly.vercel.app/",
-    image: "https://i.ibb.co/RGmKfVY8/freepik-3d-cinematic-monopoly-style-board-game-world-comin-87944.png",
-    requiresPremium: true,
-  },
   {
     id: "tabu",
     title: "Tabu",
@@ -153,36 +123,6 @@ const GAMES = [
     iconKey: "message",
     url: "https://tabu-game-three.vercel.app/",
     image: "https://images.unsplash.com/photo-1543269664-7eef42226a21?auto=format&fit=crop&q=80&w=800",
-    requiresPremium: true,
-  },
-  {
-    id: "pis-yedili",
-    title: "Pis 7'li",
-    status: "Yayında",
-    type: "live",
-    tags: ["Kart Oyunu", "Klasik", "Çok Oyunculu"],
-    description: "Klasik kart oyunu Pis 7'li şimdi dijitalde! Arkadaşlarınla toplan ve Forge&Play tarafından sunulan bu rekabetçi kart oyununda hünerlerini sergile.",
-    price: "Ücretsiz Oyna",
-    basePlayers: 1560,
-    gradient: "from-fuchsia-900 via-purple-950 to-black",
-    iconKey: "user",
-    url: "https://pis7li-oyunu.vercel.app/",
-    image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=800",
-    requiresPremium: true,
-  },
-  {
-    id: "forge-play-quiz",
-    title: "Forge&Play Quiz",
-    status: "Yayında",
-    type: "live",
-    tags: ["Bilgi", "Yarışma", "Zeka"],
-    description: "Genel kültürünü sına, arkadaşlarınla yarış! Forge&Play'e özel hazırlanan bu bilgi yarışmasıyla liderlik tablosuna adını yazdır.",
-    price: "Premium İçerik",
-    basePlayers: 420,
-    gradient: "from-indigo-900 via-blue-950 to-black",
-    iconKey: "help",
-    url: "https://forge-and-play-quiz.vercel.app/",
-    image: "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?auto=format&fit=crop&q=80&w=800",
     requiresPremium: true,
   },
   {
@@ -201,6 +141,66 @@ const GAMES = [
     requiresPremium: true,
   },
   {
+    id: "vampir-koylu",
+    title: "Vampir Köylü",
+    status: "Yayında",
+    type: "live",
+    tags: ["Parti", "Çok Oyunculu", "Gizem"],
+    description: "Konuş, şüphelen, oyla: Vampirleri bul, kasabayı kurtar. Yönetici kasabayı kurar, vampir sayısını belirler ve kaderleri dağıtır; oyun gece–gündüz döngüsü ile ilerler.",
+    price: "Premium İçerik",
+    basePlayers: 1240,
+    gradient: "from-red-900 via-rose-950 to-black",
+    iconKey: "user",
+    url: "https://vampir-oyunu.vercel.app/",
+    image: "https://i.ibb.co/KxP67Mm1/Ba-l-ks-z-4.png",
+    requiresPremium: true,
+  },
+  {
+    id: "forge-play-quiz",
+    title: "Forge&Play Quiz",
+    status: "Yayında",
+    type: "live",
+    tags: ["Bilgi", "Yarışma", "Zeka"],
+    description: "Genel kültürünü sına, arkadaşlarınla yarış! Forge&Play'e özel hazırlanan bu bilgi yarışmasıyla liderlik tablosuna adını yazdır.",
+    price: "Premium İçerik",
+    basePlayers: 420,
+    gradient: "from-indigo-900 via-blue-950 to-black",
+    iconKey: "help",
+    url: "https://forge-and-play-quiz.vercel.app/",
+    image: "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?auto=format&fit=crop&q=80&w=800",
+    requiresPremium: true,
+  },
+  {
+    id: "pis-yedili",
+    title: "Pis 7'li",
+    status: "Yayında",
+    type: "live",
+    tags: ["Kart Oyunu", "Klasik", "Çok Oyunculu"],
+    description: "Klasik kart oyunu Pis 7'li şimdi dijitalde! Arkadaşlarınla toplan ve Forge&Play tarafından sunulan bu rekabetçi kart oyununda hünerlerini sergile.",
+    price: "Premium İçerik",
+    basePlayers: 1560,
+    gradient: "from-fuchsia-900 via-purple-950 to-black",
+    iconKey: "user",
+    url: "https://pis7li-oyunu.vercel.app/",
+    image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=800",
+    requiresPremium: true,
+  },
+  {
+    id: "monopoly-bank",
+    title: "Monopoly Dijital Banka",
+    status: "Yayında",
+    type: "live",
+    tags: ["Araç", "Masa Oyunu", "Finans"],
+    description: "Odanı kur, arkadaşlarını davet et, dijital Monopoly rekabetini başlat. Kağıt paralarla uğraşmaya son! Arkadaşlarınızla Monopoly oynarken kasanızı dijital olarak yönetin.",
+    price: "Premium İçerik",
+    basePlayers: 345,
+    gradient: "from-emerald-900 via-teal-950 to-black",
+    iconKey: "wallet",
+    url: "https://siprayt-monopoly.vercel.app/",
+    image: "https://i.ibb.co/RGmKfVY8/freepik-3d-cinematic-monopoly-style-board-game-world-comin-87944.png",
+    requiresPremium: true,
+  },
+  {
     id: "sessiz-sinema",
     title: "Sessiz Sinema",
     status: "Yakında",
@@ -213,8 +213,38 @@ const GAMES = [
     iconKey: "film",
     url: null,
     image: "https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&q=80&w=800",
-    requiresPremium: true,
+    requiresPremium: false,
   },
+  {
+    id: "yuzbir-okey",
+    title: "101 Okey",
+    status: "Yakında",
+    type: "upcoming",
+    tags: ["Masa Oyunu", "Klasik", "Çok Oyunculu"],
+    description: "Efsanevi 101 Okey deneyimi yakında dijital masalarınızda. Taşları dizmeye ve arkadaşlarınızı yenmeye hazırlanın!",
+    price: "Geliştiriliyor",
+    basePlayers: 0,
+    gradient: "from-red-900 via-red-950 to-black",
+    iconKey: "user",
+    url: null,
+    image: "https://images.unsplash.com/photo-1611996575749-79a3a250f948?auto=format&fit=crop&q=80&w=800",
+    requiresPremium: false,
+  },
+  {
+    id: "koz-maca-batak",
+    title: "Koz Maça (Batak)",
+    status: "Yakında",
+    type: "upcoming",
+    tags: ["Kart Oyunu", "Klasik", "Strateji"],
+    description: "İhaleyi al, kozunu belirle ve masayı domine et. Efsanevi batak eğlencesi yakında Forge&Play'de.",
+    price: "Geliştiriliyor",
+    basePlayers: 0,
+    gradient: "from-slate-800 via-slate-950 to-black",
+    iconKey: "user",
+    url: null,
+    image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=800",
+    requiresPremium: false,
+  }
 ];
 
 const LAB_PROJECTS = [
@@ -365,7 +395,7 @@ function LivePlayerCount({ base }) {
 ---------------------------------------------- */
 const FeedbackForm = ({ currentUser, onSubmit }) => {
   const [text, setText] = useState("");
-  const [game, setGame] = useState("Vampir Köylü");
+  const [game, setGame] = useState("Tabu");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [charCount, setCharCount] = useState(0);
@@ -574,7 +604,8 @@ export default function App() {
                 premiumEndDate: isAdminEmail ? new Date("2099-01-01").toISOString() : null,
                 pendingRequest: null,
                 playCount: 0,
-                premiumTrialsUsed: 0, // YENİ: Deneme hakkı sıfırdan başlar
+                premiumTrialsUsed: 0,
+                gamePlayCounts: {}, // Oyuna özel istatistikler için boş obje eklendi
                 paymentCode,
                 createdAt: serverTimestamp(),
                 lastLogin: serverTimestamp()
@@ -679,22 +710,25 @@ export default function App() {
     }
   };
 
-  // --- YENİ: OYUNA DEVAM ET VE SÜREYİ ÖLÇ ---
+  // --- OYUNA DEVAM ET VE SÜREYİ ÖLÇ ---
   const proceedToGame = useCallback((game, isTrial = false) => {
     setTrialPromptGame(null);
     setPlayingGame(game);
 
-    // Eğer eski bir zamanlayıcı varsa iptal et
     if (playTimerRef.current) clearTimeout(playTimerRef.current);
 
-    // 60 saniyelik "Gir-Çık Koruması" (Sadece 1dk kalırsa oynamış sayılır)
+    // 60 saniyelik "Gir-Çık Koruması"
     playTimerRef.current = setTimeout(async () => {
       if (currentUser) {
         try {
+          const newGameCounts = { ...(currentUser.gamePlayCounts || {}) };
+          newGameCounts[game.id] = (Number(newGameCounts[game.id]) || 0) + 1;
+
           const updates = {
             playCount: (Number(currentUser.playCount) || 0) + 1,
             lastPlayedGameName: game.title,
-            lastPlayed: serverTimestamp()
+            lastPlayed: serverTimestamp(),
+            gamePlayCounts: newGameCounts
           };
           if (isTrial) {
             updates.premiumTrialsUsed = (Number(currentUser.premiumTrialsUsed) || 0) + 1;
@@ -705,13 +739,14 @@ export default function App() {
             ...prev,
             playCount: (Number(prev.playCount) || 0) + 1,
             lastPlayedGameName: game.title,
+            gamePlayCounts: newGameCounts,
             premiumTrialsUsed: isTrial ? (Number(prev.premiumTrialsUsed) || 0) + 1 : prev.premiumTrialsUsed
           }) : null);
         } catch (error) {
           console.error("Play count update failed:", error);
         }
       }
-    }, 60000); // 60.000 ms = 60 Saniye
+    }, 60000); // 60 saniye
   }, [currentUser]);
 
   // Oyun Açma Mantığı (Deneme Hakkı Kontrolü Eklendi)
@@ -731,16 +766,13 @@ export default function App() {
       
       const trialsUsed = Number(currentUser?.premiumTrialsUsed || 0);
       if (trialsUsed >= 3) {
-        // Hakları bitmiş, Premium satın alma uyarısını göster
         setPremiumWarningGame(game);
       } else {
-        // Deneme hakkı var, hediye uyarısını göster
         setTrialPromptGame(game);
       }
       return;
     }
     
-    // Oyun normal (ücretsiz) veya kullanıcı Premium
     proceedToGame(game, false);
   }, [currentUser, proceedToGame]);
 
@@ -864,7 +896,7 @@ export default function App() {
   };
 
   /* ---------------------------------------------
-     YENİ: HEDİYE DENEME HAKKI MODALI
+     HEDİYE DENEME HAKKI MODALI
   ---------------------------------------------- */
   const renderTrialPromptModal = () => {
     if (!trialPromptGame || !currentUser) return null;
@@ -881,7 +913,7 @@ export default function App() {
            <Sparkles className="w-16 h-16 text-emerald-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
            <h2 className="text-2xl font-black text-white mb-2">Hediye Premium Denemesi!</h2>
            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-             Yeni üyelerimize özel olarak Premium oyunları ücretsiz test etme hakkınız var. <b>{String(trialPromptGame.title)}</b> oyununu oynamak isterseniz 1 hakkınız kullanılacaktır. <i>(Oyun içinde 1 dakikadan az kalırsanız hakkınız eksilmez!)</i>
+             Yeni üyelerimize özel olarak tüm Premium oyunları ücretsiz test etme hakkınız var. <b>{String(trialPromptGame.title)}</b> oyununu oynamak isterseniz 1 hakkınız kullanılacaktır. <i>(Oyun içinde 1 dakikadan az kalırsanız hakkınız eksilmez!)</i>
            </p>
            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6">
               <span className="text-emerald-400 font-bold text-lg">Kalan Hakkınız: {remaining} / 3</span>
@@ -889,7 +921,7 @@ export default function App() {
            
            <div className="flex flex-col gap-3">
              <button onClick={() => proceedToGame(trialPromptGame, true)} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">
-               Deneme Hakkımı Kullan
+               Deneme Hakkımı Kullan ({remaining} Kaldı)
              </button>
              <button onClick={() => setTrialPromptGame(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
                Şimdilik Sakla
@@ -967,7 +999,7 @@ export default function App() {
             <button
               onClick={() => {
                 setPlayingGame(null);
-                if (playTimerRef.current) clearTimeout(playTimerRef.current); // Gir-Çık yaparsa timer iptal
+                if (playTimerRef.current) clearTimeout(playTimerRef.current);
                 if (document.fullscreenElement) document.exitFullscreen();
               }}
               className={`flex items-center gap-1.5 md:gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}
@@ -1115,11 +1147,16 @@ export default function App() {
               <div className={`w-9 h-9 lg:w-10 lg:h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center font-bold text-white shadow-lg cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-slate-950 ring-orange-500 transition-all ${!isUserPremium(currentUser) && !isAdmin ? "animate-pulse" : ""}`} onClick={() => setActiveTab("profile")}>
                 {String(currentUser.name || "U").charAt(0).toUpperCase()}
               </div>
+              
               <button 
-                onClick={() => {
+                onClick={async () => {
                   setActiveTab("store");
                   setPlayingGame(null);
-                  signOut(auth).catch(err => console.error("Çıkış hatası", err));
+                  try {
+                    await signOut(auth);
+                  } catch (err) {
+                    console.error("Çıkış hatası", err);
+                  }
                 }} 
                 className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-1" 
                 title="Çıkış Yap"
@@ -1360,43 +1397,49 @@ export default function App() {
             </div>
           ) : (
             <>
-              {slideList.map((game, idx) => (
-                <div key={game.id} className={`absolute inset-0 transition-all duration-1000 ease-in-out ${currentSlide === idx ? "opacity-100 z-10 scale-100" : "opacity-0 z-0 scale-105 pointer-events-none"}`}>
-                  <div className={`absolute inset-0 bg-gradient-to-r ${game.gradient} opacity-95 z-0`} />
-                  {game.image && (
-                    <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-                      <img src={game.image} alt={game.title} className="w-full h-full object-cover object-center opacity-40 mix-blend-overlay" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-90"></div>
-                      <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/70 to-transparent opacity-80"></div>
-                    </div>
-                  )}
+              {slideList.map((game, idx) => {
+                const locked = game.requiresPremium && !isUserPremium(currentUser);
+                const trialsUsed = currentUser ? Number(currentUser.premiumTrialsUsed || 0) : 0;
+                const hasTrials = trialsUsed < 3;
 
-                  <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center lg:justify-between p-6 md:p-10 lg:p-14 h-full z-10">
-                    <div className="w-full lg:max-w-2xl space-y-4 md:space-y-5">
-                      <div className="flex flex-wrap gap-2">
-                        <span className={`${currentSlide === idx ? "animate-pulse" : ""} bg-red-500/20 text-red-400 border border-red-500/30 text-xs md:text-sm font-bold px-3 py-1 rounded-full backdrop-blur-sm`}>Öne Çıkan</span>
-                        {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
+                return (
+                  <div key={game.id} className={`absolute inset-0 transition-all duration-1000 ease-in-out ${currentSlide === idx ? "opacity-100 z-10 scale-100" : "opacity-0 z-0 scale-105 pointer-events-none"}`}>
+                    <div className={`absolute inset-0 bg-gradient-to-r ${game.gradient} opacity-95 z-0`} />
+                    {game.image && (
+                      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+                        <img src={game.image} alt={game.title} className="w-full h-full object-cover object-center opacity-40 mix-blend-overlay" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-90"></div>
+                        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/70 to-transparent opacity-80"></div>
                       </div>
-                      <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{String(game.title)}</h1>
-                      <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{String(game.description)}</p>
-                      
-                      <div className="pt-2">
-                        <LivePlayerCount base={game.basePlayers} />
-                      </div>
+                    )}
 
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
-                        <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${game.requiresPremium && !isUserPremium(currentUser) ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); openGame(game); }}>
-                          <Play className="w-5 h-5 fill-current" />
-                          {game.requiresPremium && !isUserPremium(currentUser) ? "Premium Al" : game.id === "monopoly-bank" ? "Sistemi Başlat" : "Hemen Oyna"}
-                        </button>
+                    <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center lg:justify-between p-6 md:p-10 lg:p-14 h-full z-10">
+                      <div className="w-full lg:max-w-2xl space-y-4 md:space-y-5">
+                        <div className="flex flex-wrap gap-2">
+                          <span className={`${currentSlide === idx ? "animate-pulse" : ""} bg-red-500/20 text-red-400 border border-red-500/30 text-xs md:text-sm font-bold px-3 py-1 rounded-full backdrop-blur-sm`}>Öne Çıkan</span>
+                          {game.requiresPremium && <span className="bg-orange-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg flex items-center gap-1"><Lock className="w-3 h-3" /> PREMIUM</span>}
+                        </div>
+                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white drop-shadow-2xl tracking-tight leading-tight line-clamp-2">{String(game.title)}</h1>
+                        <p className="text-sm md:text-base lg:text-lg text-slate-200 leading-relaxed max-w-xl line-clamp-3">{String(game.description)}</p>
+                        
+                        <div className="pt-2">
+                          <LivePlayerCount base={game.basePlayers} />
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 pt-2 md:pt-4">
+                          <button tabIndex={-1} className={`flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold text-base md:text-lg transition-all transform hover:scale-105 w-full sm:w-auto shrink-0 ${locked && !hasTrials ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]" : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]"}`} onClick={(e) => { e.stopPropagation(); openGame(game); }}>
+                            <Play className="w-5 h-5 fill-current" />
+                            {locked ? (hasTrials ? `Ücretsiz Dene (${3 - trialsUsed} Hak)` : "Premium Abone Ol") : "Hemen Oyna"}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="hidden lg:flex items-center justify-center w-[220px] h-[220px] xl:w-[260px] xl:h-[260px] shrink-0 bg-slate-950/80 rounded-full border-4 border-slate-800/50 backdrop-blur-md shadow-2xl transform group-hover:scale-105 transition-transform duration-500">
-                      <GameIcon iconKey={game.iconKey} />
+                      <div className="hidden lg:flex items-center justify-center w-[220px] h-[220px] xl:w-[260px] xl:h-[260px] shrink-0 bg-slate-950/80 rounded-full border-4 border-slate-800/50 backdrop-blur-md shadow-2xl transform group-hover:scale-105 transition-transform duration-500">
+                        <GameIcon iconKey={game.iconKey} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
                 {slideList.map((_, idx) => (
                   <button key={idx} onClick={(e) => { e.stopPropagation(); setCurrentSlide(idx); }} className={`h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? "w-8 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]" : "w-2 bg-slate-500/50 hover:bg-slate-400"}`} />
@@ -1418,6 +1461,27 @@ export default function App() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {filteredGames.map((game) => {
               const locked = game.requiresPremium && !isUserPremium(currentUser);
+              const trialsUsed = currentUser ? Number(currentUser.premiumTrialsUsed || 0) : 0;
+              const hasTrials = trialsUsed < 3;
+              
+              let btnText = "İncele";
+              let btnClass = "bg-slate-800 text-slate-300 hover:bg-slate-700";
+              
+              if (game.url) {
+                 if (locked) {
+                     if (hasTrials) {
+                         btnText = `Dene (${3 - trialsUsed} Kaldı)`;
+                         btnClass = "bg-emerald-600 hover:bg-emerald-500 text-white";
+                     } else {
+                         btnText = "Abone Ol";
+                         btnClass = "bg-orange-600 hover:bg-orange-500 text-white";
+                     }
+                 } else {
+                     btnText = "Oyna";
+                     btnClass = "bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold";
+                 }
+              }
+
               return (
                 <div key={game.id} tabIndex={0} onClick={() => { openGame(game); }} className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-orange-500/50 transition-all group hover:shadow-[0_0_30px_rgba(249,115,22,0.1)] cursor-pointer flex flex-col ${focusStyles}`}>
                   <div className={`h-32 md:h-40 bg-gradient-to-br ${game.gradient} p-4 md:p-6 flex flex-col justify-between relative overflow-hidden`}>
@@ -1443,8 +1507,8 @@ export default function App() {
                          <button onClick={(e) => handleShareGame(game, e)} className="p-2 text-slate-400 hover:text-orange-400 hover:bg-orange-500/10 rounded-lg transition-colors" title="Oyunu Paylaş">
                            <Share2 className="w-4 h-4 md:w-5 md:h-5" />
                          </button>
-                         <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${game.url ? "bg-orange-600 hover:bg-orange-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>
-                           {game.url ? (locked ? "Premium Al" : "Oyna") : "İncele"}
+                         <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm transition-colors ${btnClass}`}>
+                           {btnText}
                          </button>
                       </div>
                     </div>
@@ -1495,10 +1559,23 @@ export default function App() {
                 </div>
               </div>
               <div className="mt-auto pt-8 border-t border-slate-800 flex items-center gap-3">
-                <button onClick={() => { openGame(selectedLibraryGame); }} className="flex-1 sm:flex-none px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
-                  <Play className="w-5 h-5" />
-                  {selectedLibraryGame.requiresPremium && !isUserPremium(currentUser) ? "Premium Alarak Oyna" : "Şimdi Oyna"}
-                </button>
+                {(() => {
+                   const locked = selectedLibraryGame.requiresPremium && !isUserPremium(currentUser);
+                   const trialsUsed = currentUser ? Number(currentUser.premiumTrialsUsed || 0) : 0;
+                   const hasTrials = trialsUsed < 3;
+                   
+                   let btnText = "Hemen Oyna";
+                   if (locked) {
+                       btnText = hasTrials ? `Ücretsiz Dene (${3 - trialsUsed} Kaldı)` : "Premium Abone Ol";
+                   }
+                   
+                   return (
+                     <button onClick={() => { openGame(selectedLibraryGame); }} className="flex-1 sm:flex-none px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
+                       <Play className="w-5 h-5" />
+                       {btnText}
+                     </button>
+                   );
+                })()}
                 <button onClick={(e) => handleShareGame(selectedLibraryGame, e)} className="px-5 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors border border-slate-700" title="Arkadaşlarına Gönder">
                    <Share2 className="w-5 h-5" />
                 </button>
@@ -1681,7 +1758,7 @@ export default function App() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-800">
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
-              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Oynanan Oyun</div>
+              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Toplam Oynama</div>
               <div className="text-2xl font-black text-white">{Number(currentUser.playCount || 0)}</div>
             </div>
             <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
@@ -1706,6 +1783,28 @@ export default function App() {
                <span className="text-sm text-slate-300">Son Oynanan Oyun: <b className="text-white">{String(currentUser.lastPlayedGameName)}</b></span>
             </div>
           )}
+
+          {/* OYUNA ÖZEL İSTATİSTİKLER (YENİ EKLENDİ) */}
+          <div className="mt-8 pt-8 border-t border-slate-800">
+            <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
+              <Gamepad2 className="w-4 h-4 text-orange-500" /> Oyun İstatistikleri
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {GAMES.map(g => {
+                const count = currentUser.gamePlayCounts?.[g.id] || 0;
+                if(count === 0) return null;
+                return (
+                  <div key={g.id} className="bg-slate-950 border border-slate-800/50 rounded-xl p-4 text-center">
+                    <div className="text-xs text-slate-400 mb-1 truncate" title={g.title}>{String(g.title)}</div>
+                    <div className="text-xl font-black text-white">{Number(count)} <span className="text-[10px] text-slate-500 font-normal">kez oynandı</span></div>
+                  </div>
+                );
+              })}
+              {(!currentUser.gamePlayCounts || Object.keys(currentUser.gamePlayCounts).length === 0) && (
+                <div className="col-span-full text-sm text-slate-500">Henüz hiçbir oyunda 1 dakikadan fazla vakit geçirmediniz.</div>
+              )}
+            </div>
+          </div>
 
           <div className="mt-8 pt-8 border-t border-slate-800">
             <div className="bg-gradient-to-r from-orange-900/20 to-slate-900 border border-orange-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
