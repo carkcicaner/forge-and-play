@@ -580,7 +580,8 @@ export default function App() {
   const [usersList, setUsersList] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
   const [ordersList, setOrdersList] = useState([]);
-  const [storeProducts, setStoreProducts] = useState(DEFAULT_STORE_PRODUCTS); 
+  // YENİ: Başlangıçta boş array. Veriler canlı veritabanından gelecek.
+  const [storeProducts, setStoreProducts] = useState([]); 
   const [newProductData, setNewProductData] = useState({ name: '', price: '', image: '', desc: '', type: 'Dijital' }); 
   const [adminSearch, setAdminSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -618,6 +619,11 @@ export default function App() {
   }, [usersList, adminSearch]);
 
   const isAdmin = currentUser ? isUserAdmin(currentUser) : false;
+
+  // --- SESSİZ FIREBASE HATA YAKALAYICI ---
+  const handleFirebaseError = useCallback((error) => {
+    console.warn("Firebase Uyarısı: Firestore kuralları okuma/yazma işlemlerine kısıtlı olabilir.", error);
+  }, []);
 
   // --- PWA Kurulum Dinleyicisi ---
   useEffect(() => {
@@ -664,7 +670,7 @@ export default function App() {
               if (userData.lastFapDate === undefined) updates.lastFapDate = "";
 
               if (Object.keys(updates).length > 0) {
-                await updateDoc(userRef, updates).catch(console.error);
+                await updateDoc(userRef, updates).catch(handleFirebaseError);
                 Object.assign(userData, updates);
               }
               setCurrentUser({ id: firebaseUser.uid, email: userEmail, ...userData });
@@ -687,16 +693,16 @@ export default function App() {
                 createdAt: serverTimestamp(),
                 lastLogin: serverTimestamp()
               };
-              await setDoc(userRef, newUser).catch(console.error);
+              await setDoc(userRef, newUser).catch(handleFirebaseError);
               setCurrentUser({ id: firebaseUser.uid, ...newUser });
             }
             setAuthLoading(false);
           }, (error) => {
-             console.error("Firebase auth onSnapshot error", error);
+             handleFirebaseError(error);
              setAuthLoading(false);
           });
         } catch (error) {
-          console.error(error);
+          handleFirebaseError(error);
           setAuthLoading(false);
         }
       } else {
@@ -709,17 +715,16 @@ export default function App() {
       unsubscribeAuth();
       if (unsubscribeUser) unsubscribeUser();
     };
-  }, []);
+  }, [handleFirebaseError]);
 
   // --- Admin ve Genel Verileri Çekme ---
   useEffect(() => {
     if (!db) return;
     
+    // Ürünleri koşulsuz senkronize ediyoruz ki Admin panelinden sildiğimizde liste güncellensin
     const unsubscribeProducts = onSnapshot(collection(db, "store_products"), (snapshot) => {
-      if (!snapshot.empty) {
-         setStoreProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }
-    }, console.error);
+      setStoreProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, handleFirebaseError);
 
     const unsubscribeFeedbacks = onSnapshot(
       query(collection(db, "feedbacks"), orderBy("createdAt", "desc")),
@@ -735,7 +740,7 @@ export default function App() {
         });
         setFeedbacks(fbList);
       },
-      console.error
+      handleFirebaseError
     );
 
     let unsubscribeUsers = null;
@@ -743,7 +748,7 @@ export default function App() {
     if (isAdmin) {
       unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => {
         setUsersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }, console.error);
+      }, handleFirebaseError);
 
       unsubscribeOrders = onSnapshot(query(collection(db, "orders"), orderBy("createdAt", "desc")), (snapshot) => {
         setOrdersList(snapshot.docs.map(doc => {
@@ -754,7 +759,7 @@ export default function App() {
           }
           return { id: doc.id, ...data, displayDate: dateStr };
         }));
-      }, console.error);
+      }, handleFirebaseError);
     }
 
     return () => {
@@ -763,7 +768,7 @@ export default function App() {
       if (unsubscribeUsers) unsubscribeUsers();
       if (unsubscribeOrders) unsubscribeOrders();
     };
-  }, [isAdmin]);
+  }, [isAdmin, handleFirebaseError]);
 
   const handleSharePlatform = async () => {
     const shareData = {
@@ -823,7 +828,7 @@ export default function App() {
         fapCoin: increment(addedAmount),
         dailyFap: newDailyFap,
         lastFapDate: todayStr
-      }).catch(console.error);
+      }).catch(handleFirebaseError);
       
       setCurrentUser(prev => prev ? ({
         ...prev,
@@ -835,7 +840,7 @@ export default function App() {
     } catch (error) {
       console.error("FAP Coin kazanım hatası:", error);
     }
-  }, [currentUser]);
+  }, [currentUser, handleFirebaseError]);
 
   const proceedToGame = useCallback((game, isTrial = false) => {
     setTrialPromptGame(null);
@@ -859,7 +864,7 @@ export default function App() {
           if (isTrial) {
             updates.premiumTrialsUsed = (Number(currentUser.premiumTrialsUsed) || 0) + 1;
           }
-          await updateDoc(doc(db, "users", currentUser.id), updates).catch(console.error);
+          await updateDoc(doc(db, "users", currentUser.id), updates).catch(handleFirebaseError);
           
           setCurrentUser(prev => prev ? ({
             ...prev,
@@ -887,7 +892,7 @@ export default function App() {
        }, 10000);
     }
 
-  }, [currentUser, handleEarnFapCoin]);
+  }, [currentUser, handleEarnFapCoin, handleFirebaseError]);
 
   const openGame = useCallback(async (game) => {
     if (!game) return;
@@ -988,7 +993,7 @@ export default function App() {
       await updateDoc(doc(db, "users", currentUser.id), {
         pendingRequest: plan,
         lastPurchaseAttempt: serverTimestamp()
-      }).catch(console.error);
+      }).catch(handleFirebaseError);
       const paymentUrl = PAYMENT_LINKS[plan];
       if (paymentUrl) {
         setPremiumWarningGame(null);
@@ -1014,7 +1019,7 @@ export default function App() {
         status: "beklemede",
         createdAt: serverTimestamp(),
         date: new Date().toLocaleDateString('tr-TR')
-      }).catch(console.error);
+      }).catch(handleFirebaseError);
     } catch (error) {
       throw error;
     } finally {
@@ -1036,7 +1041,7 @@ export default function App() {
       const newBalance = Number(currentUser.fapCoin) - selectedProduct.price;
       await updateDoc(doc(db, "users", currentUser.id), {
          fapCoin: newBalance
-      }).catch(console.error);
+      }).catch(handleFirebaseError);
 
       await addDoc(collection(db, "orders"), {
          userId: currentUser.id,
@@ -1049,7 +1054,7 @@ export default function App() {
          addressDetails: orderAddress || "Belirtilmedi",
          status: "Onay Bekliyor",
          createdAt: serverTimestamp()
-      }).catch(console.error);
+      }).catch(handleFirebaseError);
 
       setCurrentUser(prev => prev ? { ...prev, fapCoin: newBalance } : null);
       
@@ -1066,6 +1071,142 @@ export default function App() {
   };
 
   // --- RENDER FONKSİYONLARI ---
+
+  // Eksik Olan Premium Sayfası Eklendi!
+  const renderPremiumPage = () => (
+    <div className="space-y-12 md:space-y-16 animate-in fade-in duration-500 max-w-6xl mx-auto">
+      <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-amber-500/30 shadow-[0_0_40px_rgba(245,158,11,0.1)] text-center p-8 md:p-16">
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 pointer-events-none"></div>
+        <div className="relative z-10">
+          <Crown className="w-16 h-16 md:w-20 md:h-20 text-amber-500 mx-auto mb-6 drop-shadow-lg" />
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white mb-6 tracking-tight">Oyun Deneyimini <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">Zirveye Taşı</span></h1>
+          <p className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed">
+            Forge&Play Premium ile sınırları kaldırın. En popüler parti oyunlarına ve gelişmiş dijital masa araçlarına kesintisiz erişim sağlayın.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-center mb-10">
+          <h2 className="text-2xl md:text-3xl font-bold text-white">Neden Premium?</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { icon: Lock, title: "Sınırsız Erişim", desc: "Monopoly Banka, Tabu ve Quiz gibi tüm kilitli Premium oyunları anında açın.", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+            { icon: Crown, title: "Özel Rozet", desc: "Profilinizde ve skor tablolarında size özel altın rengi Premium rozetini taşıyın.", color: "text-amber-400", bg: "bg-amber-500/10" },
+            { icon: Zap, title: "Erken Erişim", desc: "Laboratuvarda geliştirilen yeni oyunları herkesden önce ilk siz deneyin.", color: "text-blue-400", bg: "bg-blue-500/10" },
+            { icon: HeartHandshake, title: "Projeye Destek", desc: "Bağımsız geliştiriciye destek olarak platformun daha hızlı büyümesini sağlayın.", color: "text-rose-400", bg: "bg-rose-500/10" },
+          ].map((feature, i) => {
+            const FeatureIcon = feature.icon;
+            return (
+              <div key={i} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col items-center text-center hover:border-slate-700 transition-colors">
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 ${feature.bg}`}>
+                  <FeatureIcon className={`w-7 h-7 ${feature.color}`} />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">{String(feature.title)}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{String(feature.desc)}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12">
+        <h2 className="text-2xl md:text-3xl font-bold text-white text-center mb-10">Nasıl Premium Olurum?</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+          <div className="hidden md:block absolute top-8 left-[15%] right-[15%] h-0.5 bg-slate-800"></div>
+          {[
+            { step: "1", title: "Planınızı Seçin", desc: "Aşağıdaki tablodan size en uygun abonelik süresini belirleyin." },
+            { step: "2", title: "Kodunuzu Kopyalayın", desc: "Sistemin size verdiği eşsiz 4 haneli güvenlik kodunu kopyalayın." },
+            { step: "3", title: "Not Olarak Ekleyin", desc: "Shopier ödeme sayfasındaki 'Sipariş Notu' kısmına kodunuzu yapıştırın." }
+          ].map((item, i) => (
+            <div key={i} className="relative z-10 flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-slate-950 border-4 border-slate-900 flex items-center justify-center text-xl font-black text-amber-500 shadow-lg mb-4">
+                {String(item.step)}
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">{String(item.title)}</h3>
+              <p className="text-sm text-slate-400">{String(item.desc)}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-10 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-center">
+          <p className="text-amber-400 text-sm font-medium flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-5 h-5" /> Kodunuzu eklediğinizde ödemeniz sistem tarafından eşleştirilir ve anında onaylanır.
+          </p>
+        </div>
+      </div>
+
+      <div className="pt-8">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Maceraya Başla</h2>
+          <p className="text-slate-400">Hemen bir plan seçin ve oyun gecelerini mükemmelleştirin.</p>
+        </div>
+        {renderPricingCards()}
+      </div>
+    </div>
+  );
+
+  const renderTrialPromptModal = () => {
+    if (!trialPromptGame || !currentUser) return null;
+    const trialsUsed = Number(currentUser.premiumTrialsUsed || 0);
+    const remaining = 3 - trialsUsed;
+
+    return (
+      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+           <button onClick={() => setTrialPromptGame(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
+             <X className="w-5 h-5" />
+           </button>
+
+           <Sparkles className="w-16 h-16 text-emerald-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
+           <h2 className="text-2xl font-black text-white mb-2">Hediye Premium Denemesi!</h2>
+           <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+             Yeni üyelerimize özel olarak tüm Premium oyunları ücretsiz test etme hakkınız var. <b>{String(trialPromptGame.title)}</b> oyununu oynamak isterseniz 1 hakkınız kullanılacaktır. <i>(Oyun içinde 1 dakikadan az kalırsanız hakkınız eksilmez!)</i>
+           </p>
+           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6">
+              <span className="text-emerald-400 font-bold text-lg">Kalan Hakkınız: {remaining} / 3</span>
+           </div>
+           
+           <div className="flex flex-col gap-3">
+             <button onClick={() => proceedToGame(trialPromptGame, true)} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">
+               Deneme Hakkımı Kullan ({remaining} Kaldı)
+             </button>
+             <button onClick={() => setTrialPromptGame(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
+               Şimdilik Sakla
+             </button>
+           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPremiumWarningModal = () => {
+    if (!premiumWarningGame) return null;
+    
+    const closeWarning = () => setPremiumWarningGame(null);
+
+    return (
+      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
+        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto text-center">
+           <button onClick={closeWarning} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
+             <X className="w-5 h-5" />
+           </button>
+           <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
+           <h2 className="text-3xl md:text-4xl font-black text-white mb-2">Deneme Haklarınız Bitti</h2>
+           <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto mb-8">
+             Ücretsiz deneme haklarınızı tamamladınız. <b>{String(premiumWarningGame.title)}</b> oyununa erişmeye devam etmek ve platformdaki tüm sınırları kaldırmak için Premium avantajlarına göz atın.
+           </p>
+           
+           <button onClick={() => { closeWarning(); setActiveTab("premium"); }} className="w-full md:w-auto px-10 py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg transform hover:scale-[1.02] text-lg">
+               Premium Paketleri İncele
+           </button>
+           <button onClick={closeWarning} className="block w-full md:w-auto mx-auto mt-4 px-8 py-3 text-slate-400 hover:text-white transition-colors font-bold">
+               Vazgeç
+           </button>
+        </div>
+      </div>
+    );
+  };
 
   const renderPlayerOverlay = () => {
     if (!playingGame) return null;
@@ -1166,70 +1307,6 @@ export default function App() {
           <button onClick={() => setShowInstallGuide(false)} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-colors">
             Anladım, Teşekkürler
           </button>
-        </div>
-      </div>
-    );
-  };
-
-  const renderTrialPromptModal = () => {
-    if (!trialPromptGame || !currentUser) return null;
-    const trialsUsed = Number(currentUser.premiumTrialsUsed || 0);
-    const remaining = 3 - trialsUsed;
-
-    return (
-      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-        <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
-           <button onClick={() => setTrialPromptGame(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
-             <X className="w-5 h-5" />
-           </button>
-
-           <Sparkles className="w-16 h-16 text-emerald-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
-           <h2 className="text-2xl font-black text-white mb-2">Hediye Premium Denemesi!</h2>
-           <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-             Yeni üyelerimize özel olarak tüm Premium oyunları ücretsiz test etme hakkınız var. <b>{String(trialPromptGame.title)}</b> oyununu oynamak isterseniz 1 hakkınız kullanılacaktır. <i>(Oyun içinde 1 dakikadan az kalırsanız hakkınız eksilmez!)</i>
-           </p>
-           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6">
-              <span className="text-emerald-400 font-bold text-lg">Kalan Hakkınız: {remaining} / 3</span>
-           </div>
-           
-           <div className="flex flex-col gap-3">
-             <button onClick={() => proceedToGame(trialPromptGame, true)} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all shadow-lg transform hover:scale-[1.02]">
-               Deneme Hakkımı Kullan ({remaining} Kaldı)
-             </button>
-             <button onClick={() => setTrialPromptGame(null)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
-               Şimdilik Sakla
-             </button>
-           </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderPremiumWarningModal = () => {
-    if (!premiumWarningGame) return null;
-    
-    const closeWarning = () => setPremiumWarningGame(null);
-
-    return (
-      <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
-        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto">
-           <button onClick={closeWarning} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
-             <X className="w-5 h-5" />
-           </button>
-
-           <div className="text-center mb-8">
-             <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-             <h2 className="text-3xl md:text-4xl font-black text-white mb-2">Premium'a Özel İçerik</h2>
-             <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto">
-               Bu harika oyun Premium üyelere özeldir. <b>{String(premiumWarningGame.title)}</b> oyununa erişmek ve platformdaki tüm sınırları kaldırmak için hemen aşağıdaki avantajlı paketlerden birini seçin.
-             </p>
-           </div>
-           
-           {renderPricingCards()}
-
-           {!currentUser && (
-             <div className="mt-8 text-center text-sm text-slate-400">Satın almak için önce <button className="text-orange-500 font-bold hover:text-orange-400" onClick={() => { closeWarning(); setShowLoginModal(true); }}>giriş yap</button>.</div>
-           )}
         </div>
       </div>
     );
@@ -1501,6 +1578,14 @@ export default function App() {
              </button>
            )
         })}
+        
+        {/* MOBİL ADMİN BUTONU (YENİ EKLENDİ) */}
+        {isAdmin && (
+          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
+            <Lock className="w-6 h-6 mb-1" />
+            <span className="text-[10px] font-bold">Admin</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2091,67 +2176,10 @@ export default function App() {
             </div>
           </div>
           
-          {isPremium && (
-            <div className="mt-8 pt-8 border-t border-slate-800">
-              <div className="bg-gradient-to-r from-indigo-900/20 to-slate-900 border border-indigo-500/20 rounded-3xl p-6 md:p-8">
-                <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                  <MessageSquarePlus className="w-5 h-5 text-indigo-400" /> Premium Öncelikli Fikir Kutusu
-                </h3>
-                <p className="text-sm text-slate-400 mb-6">Fikirleriniz doğrudan geliştirici ekibimize öncelikli olarak iletilir.</p>
-                <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
-              </div>
-            </div>
-          )}
-
         </div>
       </div>
     );
   };
-
-  const renderFeedback = () => (
-    <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center">
-        <Lightbulb className="w-16 h-16 text-orange-500 mx-auto mb-4" />
-        <h2 className="text-3xl font-black text-white mb-3">Fikir Kutusu</h2>
-        <p className="text-slate-400 text-sm mb-6 max-w-xl mx-auto">
-          Oyunlarımızla ilgili önerilerini, karşılaştığın sorunları veya aklındaki yeni fikirleri bizimle paylaş. Her fikir, platformu daha iyiye taşımamıza yardımcı olur.
-        </p>
-      </div>
-
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
-        {!currentUser ? (
-          <div className="text-center py-8">
-            <p className="text-slate-400 mb-4">Fikir göndermek için giriş yapmalısın.</p>
-            <button onClick={() => setShowLoginModal(true)} className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors">
-              Giriş Yap / Kayıt Ol
-            </button>
-          </div>
-        ) : (
-          <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
-        )}
-      </div>
-
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <MessageSquarePlus className="w-5 h-5 text-orange-500" /> Son Gönderilen Fikirler
-        </h3>
-        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-          {feedbacks.slice(0, 5).map(fb => (
-            <div key={fb.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded">{String(fb.game || "")}</span>
-                <span className="text-[10px] text-slate-500">{String(fb.user || "Anonim")}</span>
-              </div>
-              <p className="text-sm text-slate-300">{String(fb.text || "")}</p>
-            </div>
-          ))}
-          {feedbacks.length === 0 && (
-            <p className="text-slate-500 text-center py-4">Henüz fikir gönderilmemiş.</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 
   const renderAdminDashboard = () => {
     const approvePremiumTime = async (userId, planCode) => {
@@ -2390,7 +2418,6 @@ export default function App() {
         {activeTab === "premium" && renderPremiumPage()}
         {activeTab === "lab" && renderLab()}
         {activeTab === "profile" && renderProfile()}
-        {activeTab === "feedback" && renderFeedback()}
         {activeTab === "admin" && isAdmin && renderAdminDashboard()}
       </main>
       <footer className="hidden md:block border-t border-slate-800 bg-slate-950 py-12 mt-auto w-full">
