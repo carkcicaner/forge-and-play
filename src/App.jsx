@@ -574,6 +574,8 @@ export default function App() {
   const [isCopied, setIsCopied] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  
+  // Admin Dashboard State
   const [adminTab, setAdminTab] = useState("users");
   const [usersList, setUsersList] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
@@ -582,6 +584,7 @@ export default function App() {
   const [newProductData, setNewProductData] = useState({ name: '', price: '', image: '', desc: '', type: 'Dijital' }); 
   const [adminSearch, setAdminSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  
   const [currentSlide, setCurrentSlide] = useState(0);
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
@@ -590,7 +593,7 @@ export default function App() {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
-  // --- PWA ve Paylaşım API State'leri ---
+  // --- PWA API State'leri ---
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
@@ -616,7 +619,7 @@ export default function App() {
 
   const isAdmin = currentUser ? isUserAdmin(currentUser) : false;
 
-  // --- SESSİZ FIREBASE HATA YAKALAYICI (Kırmızı ekran uyarısı kaldırıldı) ---
+  // --- SESSİZ FIREBASE HATA YAKALAYICI ---
   const handleFirebaseError = useCallback((error) => {
     console.warn("Firebase İzin Uyarısı: Veritabanı okuma/yazma işlemleri reddedildi. Firebase Console'dan Rules sekmesini kontrol edin.");
   }, []);
@@ -814,7 +817,6 @@ export default function App() {
     let currentDailyFap = currentUser.lastFapDate === todayStr ? Number(currentUser.dailyFap || 0) : 0;
     
     if (currentDailyFap >= 8) {
-      console.log("Günlük FAP limitine (8) ulaşıldı.");
       return; 
     }
 
@@ -1069,6 +1071,80 @@ export default function App() {
   };
 
   // --- RENDER FONKSİYONLARI ---
+
+  // Premium Sayfası Fonksiyonu Eklendi (Karanlık Ekran Hatası Çözümü)
+  const renderPremiumPage = () => (
+    <div className="space-y-12 md:space-y-16 animate-in fade-in duration-500 max-w-6xl mx-auto">
+      <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-amber-500/30 shadow-[0_0_40px_rgba(245,158,11,0.1)] text-center p-8 md:p-16">
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 pointer-events-none"></div>
+        <div className="relative z-10">
+          <Crown className="w-16 h-16 md:w-20 md:h-20 text-amber-500 mx-auto mb-6 drop-shadow-lg" />
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white mb-6 tracking-tight">Oyun Deneyimini <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">Zirveye Taşı</span></h1>
+          <p className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed">
+            Forge&Play Premium ile sınırları kaldırın. En popüler parti oyunlarına ve gelişmiş dijital masa araçlarına kesintisiz erişim sağlayın.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-center mb-10">
+          <h2 className="text-2xl md:text-3xl font-bold text-white">Neden Premium?</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { icon: Lock, title: "Sınırsız Erişim", desc: "Monopoly Banka, Tabu ve Quiz gibi tüm kilitli Premium oyunları anında açın.", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+            { icon: Crown, title: "Özel Rozet", desc: "Profilinizde ve skor tablolarında size özel altın rengi Premium rozetini taşıyın.", color: "text-amber-400", bg: "bg-amber-500/10" },
+            { icon: Zap, title: "Erken Erişim", desc: "Laboratuvarda geliştirilen yeni oyunları herkesden önce ilk siz deneyin.", color: "text-blue-400", bg: "bg-blue-500/10" },
+            { icon: HeartHandshake, title: "Projeye Destek", desc: "Bağımsız geliştiriciye destek olarak platformun daha hızlı büyümesini sağlayın.", color: "text-rose-400", bg: "bg-rose-500/10" },
+          ].map((feature, i) => {
+            const FeatureIcon = feature.icon;
+            return (
+              <div key={i} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col items-center text-center hover:border-slate-700 transition-colors">
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 ${feature.bg}`}>
+                  <FeatureIcon className={`w-7 h-7 ${feature.color}`} />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">{String(feature.title)}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{String(feature.desc)}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12">
+        <h2 className="text-2xl md:text-3xl font-bold text-white text-center mb-10">Nasıl Premium Olurum?</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+          <div className="hidden md:block absolute top-8 left-[15%] right-[15%] h-0.5 bg-slate-800"></div>
+          {[
+            { step: "1", title: "Planınızı Seçin", desc: "Aşağıdaki tablodan size en uygun abonelik süresini belirleyin." },
+            { step: "2", title: "Kodunuzu Kopyalayın", desc: "Sistemin size verdiği eşsiz 4 haneli güvenlik kodunu kopyalayın." },
+            { step: "3", title: "Not Olarak Ekleyin", desc: "Shopier ödeme sayfasındaki 'Sipariş Notu' kısmına kodunuzu yapıştırın." }
+          ].map((item, i) => (
+            <div key={i} className="relative z-10 flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-slate-950 border-4 border-slate-900 flex items-center justify-center text-xl font-black text-amber-500 shadow-lg mb-4">
+                {String(item.step)}
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">{String(item.title)}</h3>
+              <p className="text-sm text-slate-400">{String(item.desc)}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-10 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-center">
+          <p className="text-amber-400 text-sm font-medium flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-5 h-5" /> Kodunuzu eklediğinizde ödemeniz sistem tarafından eşleştirilir ve anında onaylanır.
+          </p>
+        </div>
+      </div>
+
+      <div className="pt-8">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Maceraya Başla</h2>
+          <p className="text-slate-400">Hemen bir plan seçin ve oyun gecelerini mükemmelleştirin.</p>
+        </div>
+        {renderPricingCards()}
+      </div>
+    </div>
+  );
 
   const renderTrialPromptModal = () => {
     if (!trialPromptGame || !currentUser) return null;
@@ -1827,171 +1903,110 @@ export default function App() {
     );
   };
 
-  const renderProfile = () => {
-    if (!currentUser) return null;
-    const isPremium = isUserPremium(currentUser);
-    const remDays = getRemainingDays(currentUser.premiumEndDate);
-    const userFeedbacks = feedbacks.filter(fb => fb.userId === currentUser.id);
-
-    const userBadges = [];
-    if (isAdmin) userBadges.push({ id: 'admin', title: 'Platform Yöneticisi', desc: 'Sistemin koruyucusu.', icon: ShieldAlert, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' });
-    if (isPremium) userBadges.push({ id: 'premium', title: 'Premium Üye', desc: 'Platformun ayrıcalıklı destekçisi.', icon: Crown, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' });
-    if ((currentUser.playCount || 0) >= 50) {
-      userBadges.push({ id: 'gamer_pro', title: 'Efsanevi Oyuncu', desc: 'Platformda 50+ oyun oynadı.', icon: Zap, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' });
-    } else if ((currentUser.playCount || 0) >= 10) {
-      userBadges.push({ id: 'gamer_mid', title: 'Sıkı Oyuncu', desc: 'Platformda 10+ oyun oynadı.', icon: Gamepad2, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' });
-    }
-    const approvedFeedbacks = userFeedbacks.filter(fb => fb.status === "onaylandi").length;
-    if (approvedFeedbacks > 0) {
-      userBadges.push({ id: 'idea', title: 'Fikir Öncüsü', desc: 'Topluluğa harika fikirler kattı.', icon: Star, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' });
-    }
-    if (userBadges.length === 0) {
-      userBadges.push({ id: 'newbie', title: 'Yeni Maceracı', desc: 'Platforma yeni katıldı.', icon: User, color: 'text-slate-400', bg: 'bg-slate-800', border: 'border-slate-700' });
-    }
-
-    return (
-      <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
-
-          <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
-            <div className="w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-orange-500 to-amber-600 rounded-3xl flex items-center justify-center font-black text-white text-4xl md:text-5xl shadow-xl shadow-orange-500/20">
-              {String(currentUser.name || "U").charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 text-center md:text-left">
-              <h2 className="text-3xl md:text-4xl font-black text-white mb-2">{String(currentUser.name || "Kullanıcı")}</h2>
-              <div className="text-slate-400 mb-4 flex items-center justify-center md:justify-start gap-2">
-                <Mail className="w-4 h-4" /> {String(currentUser.email || "E-posta Yok")}
+  const renderLibrary = () => (
+    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 animate-in fade-in duration-500">
+      <div className="w-full lg:w-1/3 xl:w-1/4 space-y-4">
+        <div className="flex items-center gap-2 mb-6 text-white font-bold text-xl px-2">
+          <Library className="w-6 h-6 text-orange-500" /> Kütüphanem
+        </div>
+        <div className="space-y-2">
+          {GAMES.filter(g => g.status === "Yayında").map(game => (
+            <button
+              key={game.id}
+              onClick={() => setSelectedLibraryGame(game)}
+              className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${selectedLibraryGame?.id === game.id ? "bg-orange-600/20 border border-orange-500/50 text-white" : "bg-slate-900 border border-slate-800 text-slate-400 hover:bg-slate-800"}`}
+            >
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br ${game.gradient}`}>
+                <GameIcon iconKey={game.iconKey} className="w-5 h-5 text-white" />
               </div>
-
-              <div className="flex flex-wrap justify-center md:justify-start gap-3">
-                {isPremium ? (
-                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <Sparkles className="w-4 h-4 mr-2" /> Premium Aktif ({String(remDays)} Gün)
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                    Standart Üye
-                  </span>
-                )}
-                {isAdmin && (
-                  <span className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                    <Lock className="w-4 h-4 mr-2" /> Yönetici
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* KOCAMAN FAP COİN GÖSTERİMİ (YENİ EKLENDİ) */}
-          {isPremium && (
-            <div className="mt-8 bg-gradient-to-r from-amber-500/10 to-orange-600/10 border border-amber-500/30 rounded-3xl p-8 flex flex-col items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.05)] text-center relative overflow-hidden">
-              <div className="absolute inset-0 bg-amber-500/5 blur-3xl rounded-full pointer-events-none"></div>
-              <Coins className="w-16 h-16 text-amber-400 mb-4 drop-shadow-lg" />
-              <div className="text-sm font-bold text-amber-500 uppercase tracking-widest mb-2">Mevcut FAP Coin Bakiyesi</div>
-              <div className="text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-500 drop-shadow-sm">
-                {Number(currentUser.fapCoin || 0).toFixed(1)}
-              </div>
-              <p className="text-slate-400 text-sm mt-4 max-w-md">Oynadıkça FAP Coin biriktir, mağazadaki gerçek ödüllerin sahibi ol!</p>
-              <button onClick={() => setActiveTab("rewards")} className="mt-6 px-8 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl transition-all shadow-lg hover:scale-105">
-                Mağazaya Git
-              </button>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-800">
-            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
-              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Toplam Oynama</div>
-              <div className="text-2xl font-black text-white">{Number(currentUser.playCount || 0)}</div>
-            </div>
-            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
-              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Global Sıra</div>
-              <div className="text-2xl font-black text-orange-400 flex items-center justify-center gap-1">
-                <Trophy className="w-5 h-5" /> #{String(calculateRank(currentUser.playCount || 0))}
-              </div>
-            </div>
-            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center">
-              <div className="text-slate-500 text-xs font-bold uppercase mb-1">Fikir Önerisi</div>
-              <div className="text-2xl font-black text-white">{Number(userFeedbacks.length || 0)}</div>
-            </div>
-            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/50 text-center flex flex-col justify-center items-center">
-              {!isPremium && <button onClick={() => setActiveTab("premium")} className="text-orange-500 hover:text-orange-400 font-bold text-sm transition-colors">Premium Al</button>}
-              {isPremium && <span className="text-emerald-500 font-bold text-sm">Ayrıcalıklısın!</span>}
-            </div>
-          </div>
-          
-          {currentUser.lastPlayedGameName && (
-            <div className="mt-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 flex items-center justify-center gap-3">
-               <Gamepad2 className="w-5 h-5 text-orange-500" />
-               <span className="text-sm text-slate-300">Son Oynanan Oyun: <b className="text-white">{String(currentUser.lastPlayedGameName)}</b></span>
-            </div>
-          )}
-
-          <div className="mt-8 pt-8 border-t border-slate-800">
-            <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
-              <Gamepad2 className="w-4 h-4 text-orange-500" /> Oyun İstatistikleri
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {GAMES.map(g => {
-                const count = currentUser.gamePlayCounts?.[g.id] || 0;
-                if(count === 0) return null;
-                return (
-                  <div key={g.id} className="bg-slate-950 border border-slate-800/50 rounded-xl p-4 text-center">
-                    <div className="text-xs text-slate-400 mb-1 truncate" title={g.title}>{String(g.title)}</div>
-                    <div className="text-xl font-black text-white">{Number(count)} <span className="text-[10px] text-slate-500 font-normal">kez oynandı</span></div>
-                  </div>
-                );
-              })}
-              {(!currentUser.gamePlayCounts || Object.keys(currentUser.gamePlayCounts).length === 0) && (
-                <div className="col-span-full text-sm text-slate-500">Henüz hiçbir oyunda 1 dakikadan fazla vakit geçirmediniz.</div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-8 pt-8 border-t border-slate-800">
-            <div className="bg-gradient-to-r from-orange-900/20 to-slate-900 border border-orange-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-               <div>
-                  <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2"><Share2 className="w-5 h-5 text-orange-500" /> Platformu Büyütelim!</h3>
-                  <p className="text-sm text-slate-400 max-w-md">Forge&Play oyunlarını arkadaşlarına gönder ve oyun gecelerini başlat. Uygulamayı ana ekrana ekleyerek tek tıkla ulaş.</p>
-               </div>
-               <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                 <button onClick={handleSharePlatform} className="flex-1 sm:flex-none px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
-                   <Share2 className="w-4 h-4" /> Davet Et
-                 </button>
-                 {(isInstallable || isIOS) && (
-                   <button onClick={handleInstallApp} className="flex-1 sm:flex-none px-6 py-3 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-xl transition-colors border border-emerald-500/20 flex items-center justify-center gap-2">
-                     <Download className="w-4 h-4" /> Ana Ekrana Ekle
-                   </button>
-                 )}
-               </div>
-            </div>
-          </div>
-
-          <div className="mt-8 pt-8 border-t border-slate-800">
-            <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
-              <Star className="w-4 h-4 text-orange-500" /> Kazanılan Rozetler
-            </h3>
-            <div className="flex flex-wrap gap-4">
-              {userBadges.map(badge => {
-                const BadgeIcon = badge.icon;
-                return (
-                  <div key={badge.id} className={`flex items-center gap-3 p-3 pr-5 rounded-2xl border ${badge.border} ${badge.bg} transition-all hover:scale-105 cursor-default`} title={badge.desc}>
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-950 border border-slate-800/50 shadow-inner">
-                      <BadgeIcon className={`w-5 h-5 ${badge.color}`} />
-                    </div>
-                    <div>
-                      <div className={`text-sm font-bold ${badge.color}`}>{String(badge.title)}</div>
-                      <div className="text-[10px] text-slate-400">{String(badge.desc)}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+              <span className="font-semibold text-sm truncate">{String(game.title)}</span>
+            </button>
+          ))}
         </div>
       </div>
-    );
-  };
+      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-10 relative overflow-hidden flex flex-col min-h-[400px]">
+        {selectedLibraryGame ? (
+          <>
+            <div className={`absolute top-0 left-0 w-full h-48 bg-gradient-to-br ${selectedLibraryGame.gradient} opacity-20`} />
+            <div className="relative z-10 flex-1 flex flex-col">
+              <div className="flex items-start justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{String(selectedLibraryGame.title)}</h2>
+                  <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">{String(selectedLibraryGame.description)}</p>
+                  <LivePlayerCount base={selectedLibraryGame.basePlayers} />
+                </div>
+                <div className={`hidden md:flex w-20 h-20 rounded-2xl items-center justify-center shrink-0 bg-gradient-to-br ${selectedLibraryGame.gradient} shadow-xl`}>
+                  <GameIcon iconKey={selectedLibraryGame.iconKey} className="w-10 h-10 text-white" />
+                </div>
+              </div>
+              <div className="mt-auto pt-8 border-t border-slate-800 flex items-center gap-3">
+                {(() => {
+                   const locked = selectedLibraryGame.requiresPremium && !isUserPremium(currentUser);
+                   const trialsUsed = currentUser ? Number(currentUser.premiumTrialsUsed || 0) : 0;
+                   const hasTrials = trialsUsed < 3;
+                   
+                   let btnText = "Hemen Oyna";
+                   if (locked) {
+                       btnText = hasTrials ? `Ücretsiz Dene (${3 - trialsUsed} Kaldı)` : "Premium Abone Ol";
+                   }
+                   
+                   return (
+                     <button onClick={() => { openGame(selectedLibraryGame); }} className="flex-1 sm:flex-none px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
+                       <Play className="w-5 h-5" />
+                       {btnText}
+                     </button>
+                   );
+                })()}
+                <button onClick={(e) => handleShareGame(selectedLibraryGame, e)} className="px-5 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors border border-slate-700" title="Arkadaşlarına Gönder">
+                   <Share2 className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+           <div className="flex flex-col items-center justify-center text-slate-500 h-full flex-1">
+             <Library className="w-12 h-12 mb-4 opacity-50" />
+             <p>Oynamak için sol taraftan bir oyun seçin</p>
+           </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderLab = () => (
+    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
+      <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 md:p-10 text-center relative overflow-hidden">
+        <FlaskConical className="w-16 h-16 text-orange-500 mx-auto mb-6 opacity-80" />
+        <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Geliştirme Laboratuvarı</h2>
+        <p className="text-slate-400 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
+          Burada geleceğin oyunlarını ve AI deneyimlerini tasarlıyoruz. Geliştirme aşamasındaki projelerimize göz at ve ilerlemeyi takip et.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {LAB_PROJECTS.map(proj => (
+          <div key={proj.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 flex flex-col hover:border-slate-700 transition-all group">
+            <div className="flex justify-between items-start mb-6">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${proj.gradient}`}>
+                <FlaskConical className="w-6 h-6 text-white opacity-80" />
+              </div>
+              <span className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-full">{String(proj.status)}</span>
+            </div>
+            <h3 className="text-xl md:text-2xl font-bold text-white mb-3">{String(proj.title)}</h3>
+            <p className="text-slate-400 text-sm mb-8 flex-1">{String(proj.description)}</p>
+            <div>
+              <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
+                <span>Tamamlanma</span>
+                <span>%{Number(proj.progress)}</span>
+              </div>
+              <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div className="bg-orange-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${proj.progress}%` }}></div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   const renderAdminDashboard = () => {
     const approvePremiumTime = async (userId, planCode) => {
@@ -2059,7 +2074,7 @@ export default function App() {
               <Lock className="w-6 h-6 text-amber-500" />
               <h2 className="text-2xl md:text-3xl font-bold text-white">Yönetici Paneli</h2>
             </div>
-            <p className="text-amber-200/60 text-sm">Canlı Veritabanı Kontrol Merkezi</p>
+            <p className="text-amber-200/60 text-sm">Sadece Kuruculara Özel Kontrol Merkezi</p>
           </div>
           <div className="flex flex-wrap bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
             <button onClick={() => setAdminTab("users")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "users" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Kullanıcılar</button>
