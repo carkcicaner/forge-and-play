@@ -34,7 +34,13 @@ import {
   Share2,
   Download,
   Smartphone,
-  Maximize
+  Maximize,
+  Gift,
+  ShoppingBag,
+  Coins,
+  Truck,
+  CreditCard,
+  Clock
 } from "lucide-react";
 
 // --- FIREBASE IMPORTLARI ---
@@ -60,7 +66,8 @@ import {
   deleteDoc,
   query,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  increment
 } from "firebase/firestore";
 
 /* =========================================================================
@@ -107,7 +114,7 @@ if (isFirebaseConfigured) {
 }
 
 /* ---------------------------------------------
-    OYUN VERİLERİ (YENİ SIRALAMA VE EKLENTİLER)
+    OYUN VERİLERİ 
 ---------------------------------------------- */
 const GAMES = [
   {
@@ -266,6 +273,52 @@ const LAB_PROJECTS = [
   },
 ];
 
+/* ---------------------------------------------
+    VARSAYILAN FAP COİN MAĞAZA ÜRÜNLERİ
+---------------------------------------------- */
+const DEFAULT_STORE_PRODUCTS = [
+  { 
+    id: "steam-100", 
+    name: "100 TL Steam Cüzdan Kodu", 
+    price: 350, 
+    image: "https://images.unsplash.com/photo-1614680376573-df3480f0c6ff?auto=format&fit=crop&q=80&w=800", 
+    desc: "Favori oyunlarını almak için 100 TL değerinde Steam cüzdan kodu. Sipariş onaylandığında profilinizdeki e-posta adresine gönderilir.", 
+    type: "Dijital" 
+  },
+  { 
+    id: "discord-nitro", 
+    name: "1 Aylık Discord Nitro", 
+    price: 600, 
+    image: "https://images.unsplash.com/photo-1614680376408-140b95764d9c?auto=format&fit=crop&q=80&w=800", 
+    desc: "Oyun gecelerini renklendirmek için 1 aylık Discord Nitro. Özel emojiler ve yüksek yayın kalitesi avantajı.", 
+    type: "Dijital" 
+  },
+  { 
+    id: "coffee-mug", 
+    name: "Forge&Play Tasarım Kupa", 
+    price: 450, 
+    image: "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?auto=format&fit=crop&q=80&w=800", 
+    desc: "Sabahlara kadar süren oyun geceleri için özel tasarım kupa. Sipariş aşamasında açık adres girmeniz gerekmektedir.", 
+    type: "Fiziksel" 
+  },
+  { 
+    id: "gaming-mouse", 
+    name: "Profesyonel Oyuncu Faresi", 
+    price: 1500, 
+    image: "https://images.unsplash.com/photo-1527814050087-379381547962?auto=format&fit=crop&q=80&w=800", 
+    desc: "Yüksek hassasiyetli, RGB aydınlatmalı e-spor faresi. Tamamen ücretsiz olarak adresinize kargolanır.", 
+    type: "Fiziksel" 
+  },
+  { 
+    id: "keyboard", 
+    name: "Mekanik Oyuncu Klavyesi", 
+    price: 2500, 
+    image: "https://images.unsplash.com/photo-1595225476474-87563907a212?auto=format&fit=crop&q=80&w=800", 
+    desc: "RGB aydınlatmalı, tam boy profesyonel mekanik klavye. En üst düzey FAP Coin ödülü!", 
+    type: "Fiziksel" 
+  }
+];
+
 const focusStyles = "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-500 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950";
 
 /* ---------------------------------------------
@@ -277,57 +330,61 @@ const BAD_WORDS = [
   "ananı", "bacı", "pezevenk", "gerizekalı", "salak", "aptal"
 ];
 
-const sanitizeText = (text) => {
+function sanitizeText(text) {
   if (!text) return '';
   return String(text).replace(/[<>]/g, '').replace(/[{}[\]()]/g, '').trim();
-};
+}
 
-const containsProfanity = (text) => {
+function containsProfanity(text) {
   if (!text) return false;
   const lowerText = String(text).toLowerCase();
   return BAD_WORDS.some(word => lowerText.includes(word));
-};
+}
 
 /* ---------------------------------------------
     YARDIMCI FONKSİYONLAR
 ---------------------------------------------- */
-const calculateRank = (playCount) => {
+function calculateRank(playCount) {
   const baseRank = 50000;
-  const rank = baseRank - (Number(playCount || 0) * 142);
+  const count = Number(playCount) || 0;
+  const rank = baseRank - (count * 142);
   return rank < 1 ? 1 : rank.toLocaleString('tr-TR');
-};
+}
 
-const isUserAdmin = (user) => {
-  if (!user || !user.email) return false;
+function isUserAdmin(user) {
+  if (!user) return false;
   if (user.role === "admin") return true;
-  const userEmail = String(user.email).toLowerCase().trim();
-  return ADMIN_EMAILS.includes(userEmail);
-};
+  if (user.email) {
+     const mail = String(user.email).toLowerCase().trim();
+     return mail === "forgeandplay@gmail.com" || mail === "carkci.caner@gmail.com" || ADMIN_EMAILS.includes(mail);
+  }
+  return false;
+}
 
-const isUserPremium = (user) => {
+function isUserPremium(user) {
   if (!user) return false;
   if (isUserAdmin(user)) return true;
   if (!user.premiumEndDate) return false;
   try {
     return new Date(user.premiumEndDate) > new Date();
-  } catch {
+  } catch (e) {
     return false;
   }
-};
+}
 
-const getRemainingDays = (dateString) => {
+function getRemainingDays(dateString) {
   if (!dateString) return null;
   try {
     const diffTime = new Date(dateString) - new Date();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  } catch {
+  } catch (e) {
     return null;
   }
-};
+}
 
-const createRateLimiter = (maxAttempts = 5, timeWindow = 60000) => {
+function createRateLimiter(maxAttempts = 5, timeWindow = 60000) {
   const attempts = new Map();
-  return (key) => {
+  return function(key) {
     const now = Date.now();
     const userAttempts = attempts.get(key) || [];
     const recent = userAttempts.filter(time => now - time < timeWindow);
@@ -336,7 +393,7 @@ const createRateLimiter = (maxAttempts = 5, timeWindow = 60000) => {
     attempts.set(key, recent);
     return true;
   };
-};
+}
 
 const feedbackRateLimiter = createRateLimiter(3, 60000);
 const loginRateLimiter = createRateLimiter(5, 300000);
@@ -495,17 +552,27 @@ export default function App() {
     );
   }
 
-  const [activeTab, setActiveTab] = useState("store");
+  // --- TEMEL STATE'LER ---
+  const [activeTab, setActiveTab] = useState("store"); 
   const [playingGame, setPlayingGame] = useState(null);
   const [selectedLibraryGame, setSelectedLibraryGame] = useState(GAMES[0]);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [paymentIntent, setPaymentIntent] = useState(null);
   
+  // YENİ: Firebase İzin (Rules) Hatası State'i
+  const [firebaseRulesError, setFirebaseRulesError] = useState(false);
+
   // Modallar ve Deneme (Trial) State'leri
   const [premiumWarningGame, setPremiumWarningGame] = useState(null); 
   const [trialPromptGame, setTrialPromptGame] = useState(null); 
-  const playTimerRef = useRef(null); // Gir-Çık önleme kalkanı için zamanlayıcı
+  const playTimerRef = useRef(null);
+  const fapCoinIntervalRef = useRef(null);
+
+  // --- Ödül Mağazası Sipariş State'leri ---
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [orderAddress, setOrderAddress] = useState("");
+  const [isOrdering, setIsOrdering] = useState(false);
 
   const [isCopied, setIsCopied] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -513,6 +580,10 @@ export default function App() {
   const [adminTab, setAdminTab] = useState("users");
   const [usersList, setUsersList] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
+  const [ordersList, setOrdersList] = useState([]);
+  // YENİ: Fallback olarak varsayılan ürünleri yüklüyoruz. Veritabanı açıkça burayı ezecek.
+  const [storeProducts, setStoreProducts] = useState(DEFAULT_STORE_PRODUCTS); 
+  const [newProductData, setNewProductData] = useState({ name: '', price: '', image: '', desc: '', type: 'Dijital' }); 
   const [adminSearch, setAdminSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -549,6 +620,15 @@ export default function App() {
 
   const isAdmin = currentUser ? isUserAdmin(currentUser) : false;
 
+  // --- YENİ: FIREBASE HATA YAKALAYICI FONKSİYON (SESSİZ ÇALIŞIR) ---
+  const handleFirebaseError = useCallback((error) => {
+    // Console error yerine warn kullanarak sistem çökmesi hissini engelliyoruz.
+    console.warn("Firebase İzin Uyarısı: Veritabanı okuma/yazma kilitli. Lütfen Firebase Console'dan Rules sekmesini güncelleyin.");
+    if (error.code === 'permission-denied' || (error.message && error.message.toLowerCase().includes('permission'))) {
+      setFirebaseRulesError(true);
+    }
+  }, []);
+
   // --- PWA Kurulum Dinleyicisi ---
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -582,15 +662,19 @@ export default function App() {
             if (docSnap.exists()) {
               const userData = docSnap.data();
               const updates = {};
+              
               if (isAdminEmail && userData.role !== "admin") {
                 updates.role = "admin";
                 updates.premiumEndDate = new Date("2099-01-01").toISOString();
               }
-              if (!userData.paymentCode) {
-                updates.paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
-              }
+              if (!userData.paymentCode) updates.paymentCode = "FP-" + firebaseUser.uid.substring(0, 4).toUpperCase();
+              
+              if (userData.fapCoin === undefined) updates.fapCoin = 0;
+              if (userData.dailyFap === undefined) updates.dailyFap = 0;
+              if (userData.lastFapDate === undefined) updates.lastFapDate = "";
+
               if (Object.keys(updates).length > 0) {
-                await updateDoc(userRef, updates).catch(console.error);
+                await updateDoc(userRef, updates).catch(handleFirebaseError);
                 Object.assign(userData, updates);
               }
               setCurrentUser({ id: firebaseUser.uid, email: userEmail, ...userData });
@@ -605,18 +689,24 @@ export default function App() {
                 pendingRequest: null,
                 playCount: 0,
                 premiumTrialsUsed: 0,
-                gamePlayCounts: {}, // Oyuna özel istatistikler için boş obje eklendi
+                gamePlayCounts: {},
+                fapCoin: 0,        
+                dailyFap: 0,       
+                lastFapDate: "",   
                 paymentCode,
                 createdAt: serverTimestamp(),
                 lastLogin: serverTimestamp()
               };
-              await setDoc(userRef, newUser);
+              await setDoc(userRef, newUser).catch(handleFirebaseError);
               setCurrentUser({ id: firebaseUser.uid, ...newUser });
             }
             setAuthLoading(false);
+          }, (error) => {
+             handleFirebaseError(error);
+             setAuthLoading(false);
           });
         } catch (error) {
-          console.error("User snapshot error:", error);
+          handleFirebaseError(error);
           setAuthLoading(false);
         }
       } else {
@@ -629,10 +719,19 @@ export default function App() {
       unsubscribeAuth();
       if (unsubscribeUser) unsubscribeUser();
     };
-  }, []);
+  }, [handleFirebaseError]);
 
+  // --- Admin ve Genel Verileri Çekme (Hata Yakalayıcı Eklendi) ---
   useEffect(() => {
     if (!db) return;
+    
+    const unsubscribeProducts = onSnapshot(collection(db, "store_products"), (snapshot) => {
+      // Sadece veritabanı doluysa üzerine yaz, boşsa veya hata verirse default ürünler kalsın.
+      if (!snapshot.empty) {
+         setStoreProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    }, handleFirebaseError);
+
     const unsubscribeFeedbacks = onSnapshot(
       query(collection(db, "feedbacks"), orderBy("createdAt", "desc")),
       (snapshot) => {
@@ -640,35 +739,42 @@ export default function App() {
           const data = doc.data();
           let dateStr = new Date().toISOString();
           if (data.createdAt) {
-            if (typeof data.createdAt.toDate === 'function') {
-              dateStr = data.createdAt.toDate().toISOString();
-            } else if (data.createdAt instanceof Date) {
-              dateStr = data.createdAt.toISOString();
-            }
+            if (typeof data.createdAt.toDate === 'function') dateStr = data.createdAt.toDate().toISOString();
+            else if (data.createdAt instanceof Date) dateStr = data.createdAt.toISOString();
           }
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: dateStr
-          };
+          return { id: doc.id, ...data, createdAt: dateStr };
         });
         setFeedbacks(fbList);
       },
-      console.error
+      handleFirebaseError
     );
 
     let unsubscribeUsers = null;
+    let unsubscribeOrders = null;
     if (isAdmin) {
       unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => {
         setUsersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }, console.error);
+      }, handleFirebaseError);
+
+      unsubscribeOrders = onSnapshot(query(collection(db, "orders"), orderBy("createdAt", "desc")), (snapshot) => {
+        setOrdersList(snapshot.docs.map(doc => {
+          const data = doc.data();
+          let dateStr = new Date().toLocaleDateString('tr-TR');
+          if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+            dateStr = data.createdAt.toDate().toLocaleDateString('tr-TR') + ' ' + data.createdAt.toDate().toLocaleTimeString('tr-TR');
+          }
+          return { id: doc.id, ...data, displayDate: dateStr };
+        }));
+      }, handleFirebaseError);
     }
 
     return () => {
+      unsubscribeProducts();
       unsubscribeFeedbacks();
       if (unsubscribeUsers) unsubscribeUsers();
+      if (unsubscribeOrders) unsubscribeOrders();
     };
-  }, [isAdmin]);
+  }, [isAdmin, handleFirebaseError]);
 
   const handleSharePlatform = async () => {
     const shareData = {
@@ -710,14 +816,46 @@ export default function App() {
     }
   };
 
-  // --- OYUNA DEVAM ET VE SÜREYİ ÖLÇ ---
+  const handleEarnFapCoin = useCallback(async () => {
+    if (!currentUser || !isUserPremium(currentUser)) return;
+    
+    const todayStr = new Date().toLocaleDateString('tr-TR');
+    let currentDailyFap = currentUser.lastFapDate === todayStr ? Number(currentUser.dailyFap || 0) : 0;
+    
+    if (currentDailyFap >= 8) {
+      console.log("Günlük FAP limitine (8) ulaşıldı.");
+      return; 
+    }
+
+    try {
+      const addedAmount = 0.5;
+      const newDailyFap = currentDailyFap + addedAmount;
+
+      await updateDoc(doc(db, "users", currentUser.id), {
+        fapCoin: increment(addedAmount),
+        dailyFap: newDailyFap,
+        lastFapDate: todayStr
+      }).catch(handleFirebaseError);
+      
+      setCurrentUser(prev => prev ? ({
+        ...prev,
+        fapCoin: (Number(prev.fapCoin) || 0) + addedAmount,
+        dailyFap: newDailyFap,
+        lastFapDate: todayStr
+      }) : null);
+      
+    } catch (error) {
+      console.error("FAP Coin kazanım hatası:", error);
+    }
+  }, [currentUser, handleFirebaseError]);
+
   const proceedToGame = useCallback((game, isTrial = false) => {
     setTrialPromptGame(null);
     setPlayingGame(game);
 
     if (playTimerRef.current) clearTimeout(playTimerRef.current);
+    if (fapCoinIntervalRef.current) clearInterval(fapCoinIntervalRef.current);
 
-    // 60 saniyelik "Gir-Çık Koruması"
     playTimerRef.current = setTimeout(async () => {
       if (currentUser) {
         try {
@@ -733,7 +871,7 @@ export default function App() {
           if (isTrial) {
             updates.premiumTrialsUsed = (Number(currentUser.premiumTrialsUsed) || 0) + 1;
           }
-          await updateDoc(doc(db, "users", currentUser.id), updates);
+          await updateDoc(doc(db, "users", currentUser.id), updates).catch(handleFirebaseError);
           
           setCurrentUser(prev => prev ? ({
             ...prev,
@@ -746,17 +884,26 @@ export default function App() {
           console.error("Play count update failed:", error);
         }
       }
-    }, 60000); // 60 saniye
-  }, [currentUser]);
+    }, 60000);
 
-  // Oyun Açma Mantığı (Deneme Hakkı Kontrolü Eklendi)
+    if (currentUser && isUserPremium(currentUser)) {
+       let activeSecondsForFap = 0;
+       fapCoinIntervalRef.current = setInterval(() => {
+          if (!document.hidden) {
+            activeSecondsForFap += 10; 
+            if (activeSecondsForFap >= 600) {
+               handleEarnFapCoin();
+               activeSecondsForFap = 0; 
+            }
+          }
+       }, 10000);
+    }
+
+  }, [currentUser, handleEarnFapCoin, handleFirebaseError]);
+
   const openGame = useCallback(async (game) => {
     if (!game) return;
-    
-    if (!game.url) {
-      alert("Bu oyun henüz yayında değil.");
-      return;
-    }
+    if (!game.url) { alert("Bu oyun henüz yayında değil."); return; }
 
     if (game.requiresPremium && !isUserPremium(currentUser)) {
       if (!currentUser) {
@@ -802,17 +949,12 @@ export default function App() {
     }
     try {
       if (isRegistering) {
-        if (passwordInput.length < 6) {
-          setAuthError("Şifre en az 6 karakter olmalıdır.");
-          return;
-        }
+        if (passwordInput.length < 6) { setAuthError("Şifre en az 6 karakter olmalıdır."); return; }
         await createUserWithEmailAndPassword(auth, email, passwordInput);
       } else {
         await signInWithEmailAndPassword(auth, email, passwordInput);
       }
-      setShowLoginModal(false);
-      setPasswordInput("");
-      setEmailInput("");
+      setShowLoginModal(false); setPasswordInput(""); setEmailInput("");
     } catch (error) {
       switch (error.code) {
         case 'auth/email-already-in-use': setAuthError("Bu e-posta adresi zaten kullanılıyor."); break;
@@ -837,10 +979,7 @@ export default function App() {
   };
 
   const handlePasswordReset = async () => {
-    if (!emailInput) {
-      setAuthError("Şifre sıfırlama için e-posta adresinizi girin.");
-      return;
-    }
+    if (!emailInput) { setAuthError("Şifre sıfırlama için e-posta adresinizi girin."); return; }
     try {
       await sendPasswordResetEmail(auth, emailInput);
       setAuthError("Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.");
@@ -861,7 +1000,7 @@ export default function App() {
       await updateDoc(doc(db, "users", currentUser.id), {
         pendingRequest: plan,
         lastPurchaseAttempt: serverTimestamp()
-      });
+      }).catch(handleFirebaseError);
       const paymentUrl = PAYMENT_LINKS[plan];
       if (paymentUrl) {
         setPremiumWarningGame(null);
@@ -887,7 +1026,7 @@ export default function App() {
         status: "beklemede",
         createdAt: serverTimestamp(),
         date: new Date().toLocaleDateString('tr-TR')
-      });
+      }).catch(handleFirebaseError);
     } catch (error) {
       throw error;
     } finally {
@@ -895,9 +1034,51 @@ export default function App() {
     }
   };
 
-  /* ---------------------------------------------
-     HEDİYE DENEME HAKKI MODALI
-  ---------------------------------------------- */
+  const handleRewardPurchase = async (e) => {
+    e.preventDefault();
+    if (!currentUser || !selectedProduct) return;
+
+    if (Number(currentUser.fapCoin || 0) < selectedProduct.price) {
+       alert("Yetersiz FAP Coin bakiyesi!");
+       return;
+    }
+
+    setIsOrdering(true);
+    try {
+      const newBalance = Number(currentUser.fapCoin) - selectedProduct.price;
+      await updateDoc(doc(db, "users", currentUser.id), {
+         fapCoin: newBalance
+      }).catch(handleFirebaseError);
+
+      await addDoc(collection(db, "orders"), {
+         userId: currentUser.id,
+         userEmail: currentUser.email,
+         userName: currentUser.name || "İsimsiz",
+         productId: selectedProduct.id,
+         productName: selectedProduct.name,
+         productType: selectedProduct.type,
+         fapCost: selectedProduct.price,
+         addressDetails: orderAddress || "Belirtilmedi",
+         status: "Onay Bekliyor",
+         createdAt: serverTimestamp()
+      }).catch(handleFirebaseError);
+
+      setCurrentUser(prev => prev ? { ...prev, fapCoin: newBalance } : null);
+      
+      alert("Tebrikler! Siparişiniz başarıyla alındı ve yönetici onayına gönderildi. Durumu e-posta ile size bildirilecektir.");
+      setSelectedProduct(null);
+      setOrderAddress("");
+      
+    } catch (err) {
+      console.error("Sipariş hatası:", err);
+      alert("Sipariş oluşturulurken bir hata meydana geldi.");
+    } finally {
+      setIsOrdering(false);
+    }
+  };
+
+  // --- RENDER FONKSİYONLARI ---
+
   const renderTrialPromptModal = () => {
     if (!trialPromptGame || !currentUser) return null;
     const trialsUsed = Number(currentUser.premiumTrialsUsed || 0);
@@ -932,37 +1113,36 @@ export default function App() {
     );
   };
 
-  /* ---------------------------------------------
-     PREMIUM BİTİŞ (ÖDEME DUVARI) MODALI
-  ---------------------------------------------- */
   const renderPremiumWarningModal = () => {
     if (!premiumWarningGame) return null;
+    
+    const closeWarning = () => setPremiumWarningGame(null);
+
     return (
       <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
-        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto text-center">
-           <button onClick={() => setPremiumWarningGame(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
+        <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl relative my-auto">
+           <button onClick={closeWarning} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors z-20">
              <X className="w-5 h-5" />
            </button>
-           <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
-           <h2 className="text-3xl md:text-4xl font-black text-white mb-2">Deneme Haklarınız Bitti</h2>
-           <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto mb-8">
-             Ücretsiz deneme haklarınızı tamamladınız. <b>{String(premiumWarningGame.title)}</b> oyununa erişmeye devam etmek ve platformdaki tüm sınırları kaldırmak için Premium avantajlarına göz atın.
-           </p>
+
+           <div className="text-center mb-8">
+             <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" />
+             <h2 className="text-3xl md:text-4xl font-black text-white mb-2">Premium'a Özel İçerik</h2>
+             <p className="text-slate-300 text-sm md:text-base leading-relaxed max-w-2xl mx-auto">
+               Bu harika oyun Premium üyelere özeldir. <b>{String(premiumWarningGame.title)}</b> oyununa erişmek ve platformdaki tüm sınırları kaldırmak için hemen aşağıdaki avantajlı paketlerden birini seçin.
+             </p>
+           </div>
            
-           <button onClick={() => { setPremiumWarningGame(null); setActiveTab("premium"); }} className="w-full md:w-auto px-10 py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg transform hover:scale-[1.02] text-lg">
-               Premium Paketleri İncele
-           </button>
-           <button onClick={() => setPremiumWarningGame(null)} className="block w-full md:w-auto mx-auto mt-4 px-8 py-3 text-slate-400 hover:text-white transition-colors font-bold">
-               Vazgeç
-           </button>
+           {renderPricingCards()}
+
+           {!currentUser && (
+             <div className="mt-8 text-center text-sm text-slate-400">Satın almak için önce <button className="text-orange-500 font-bold hover:text-orange-400" onClick={() => { closeWarning(); setShowLoginModal(true); }}>giriş yap</button>.</div>
+           )}
         </div>
       </div>
     );
   };
 
-  /* ---------------------------------------------
-     OYUN EKRANI EKLENTİLERİ
-  ---------------------------------------------- */
   const renderPlayerOverlay = () => {
     if (!playingGame) return null;
     const secureUrl = getSecureGameUrl(playingGame.url);
@@ -1000,6 +1180,7 @@ export default function App() {
               onClick={() => {
                 setPlayingGame(null);
                 if (playTimerRef.current) clearTimeout(playTimerRef.current);
+                if (fapCoinIntervalRef.current) clearInterval(fapCoinIntervalRef.current);
                 if (document.fullscreenElement) document.exitFullscreen();
               }}
               className={`flex items-center gap-1.5 md:gap-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${focusStyles}`}
@@ -1066,6 +1247,141 @@ export default function App() {
     );
   };
 
+  const renderRewardsStore = () => {
+    const renderPurchaseModal = () => {
+      if (!selectedProduct) return null;
+      const isPhysical = selectedProduct.type === "Fiziksel";
+      return (
+        <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in overflow-y-auto">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative">
+            <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+            <div className="mb-6 text-center">
+              <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-40 object-cover rounded-xl mb-4 border border-slate-800" />
+              <h3 className="text-xl font-bold text-white mb-1">{String(selectedProduct.name)}</h3>
+              <p className="text-amber-400 font-bold text-lg flex items-center justify-center gap-1">
+                <Coins className="w-5 h-5" /> {Number(selectedProduct.price)} FAP
+              </p>
+            </div>
+            
+            <form onSubmit={handleRewardPurchase} className="space-y-4">
+               {isPhysical ? (
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kargo Adresi</label>
+                   <textarea required value={orderAddress} onChange={(e) => setOrderAddress(e.target.value)} placeholder="Ürünün gönderileceği tam adres..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 min-h-[100px]" />
+                 </div>
+               ) : (
+                 <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center">
+                   <p className="text-emerald-400 text-sm">Bu dijital bir üründür. Kodunuz veya linkiniz onaylandıktan sonra <b>{currentUser?.email}</b> adresinize gönderilecektir.</p>
+                 </div>
+               )}
+               <button type="submit" disabled={isOrdering} className={`w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50`}>
+                 {isOrdering ? "İşleniyor..." : "Siparişi Tamamla"}
+               </button>
+            </form>
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        {renderPurchaseModal()}
+        
+        <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-amber-500/30 shadow-[0_0_40px_rgba(245,158,11,0.1)] p-8 md:p-12 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 pointer-events-none"></div>
+          <div className="relative z-10 flex-1">
+            <h1 className="text-3xl md:text-5xl font-black text-white mb-4 tracking-tight flex items-center gap-3">
+              <Gift className="w-8 h-8 md:w-12 md:h-12 text-amber-500" /> Ödül Mağazası
+            </h1>
+            <p className="text-sm md:text-base text-slate-300 leading-relaxed max-w-2xl mb-6">
+              Oynadıkça kazan! Premium üyeler oyunlarda geçirdikleri her <b className="text-amber-400">10 dakikada 0.5 FAP Coin</b> kazanır (Günde Maks 8 FAP). Biriktirdiğin coinlerle aşağıdaki gerçek ödülleri ücretsiz alabilirsin.
+            </p>
+            {!currentUser ? (
+              <button onClick={() => setShowLoginModal(true)} className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition-colors">Kazanmaya Başlamak İçin Giriş Yap</button>
+            ) : !isUserPremium(currentUser) ? (
+              <button onClick={() => setActiveTab("premium")} className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold rounded-xl transition-colors flex items-center gap-2">
+                <Crown className="w-5 h-5"/> Premium Ol ve FAP Kazan
+              </button>
+            ) : (
+              <div className="inline-flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-2xl p-3 px-5 shadow-inner">
+                <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center border border-amber-500/30">
+                  <Coins className="w-5 h-5 text-amber-500" />
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">Bakiye</div>
+                  <div className="text-xl font-black text-amber-400">{Number(currentUser.fapCoin || 0).toFixed(1)} FAP</div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="relative z-10 hidden md:flex w-48 h-48 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full items-center justify-center shadow-2xl shadow-amber-500/20 transform rotate-12">
+            <ShoppingBag className="w-24 h-24 text-white opacity-90" />
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-6 border-b border-slate-800 pb-4">
+            <h2 className="text-xl md:text-2xl font-bold text-white">Tüm Ödüller</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {storeProducts.length === 0 ? (
+              <div className="col-span-full text-center py-12 text-slate-500 flex flex-col items-center">
+                <ShoppingBag className="w-12 h-12 mb-3 opacity-20" />
+                <p>Şu an mağazada ürün bulunmuyor. Çok yakında yeni ürünler eklenecektir!</p>
+              </div>
+            ) : storeProducts.map(product => {
+              const canAfford = currentUser && Number(currentUser.fapCoin || 0) >= product.price;
+              const isPremiumOnly = currentUser && !isUserPremium(currentUser);
+
+              return (
+                <div key={product.id} className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-amber-500/50 transition-all group flex flex-col h-full hover:-translate-y-1 hover:shadow-xl shadow-amber-500/10">
+                  <div className="relative aspect-square overflow-hidden bg-slate-950">
+                    <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 opacity-80 group-hover:opacity-100" />
+                    <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-md border border-slate-700 flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                       {product.type === "Fiziksel" ? <Truck className="w-3.5 h-3.5 text-emerald-400" /> : <CreditCard className="w-3.5 h-3.5 text-blue-400" />}
+                       {String(product.type)}
+                    </div>
+                  </div>
+                  
+                  <div className="p-4 md:p-5 flex flex-col flex-1">
+                    <h3 className="text-base md:text-lg font-bold text-white mb-2 line-clamp-2">{String(product.name)}</h3>
+                    <p className="text-xs text-slate-400 line-clamp-2 mb-4 flex-1">{String(product.desc)}</p>
+                    
+                    <div className="flex items-center justify-between mt-auto">
+                      <div className="flex items-center gap-1.5 text-amber-500 font-black text-xl">
+                        <Coins className="w-5 h-5" /> {Number(product.price)}
+                      </div>
+                      
+                      <button 
+                        onClick={() => {
+                          if(!currentUser) { setShowLoginModal(true); return; }
+                          if(isPremiumOnly) { setActiveTab("premium"); return; }
+                          setSelectedProduct(product);
+                        }}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-lg ${
+                          !currentUser ? "bg-slate-800 text-white hover:bg-slate-700" :
+                          isPremiumOnly ? "bg-slate-800 border border-amber-500/30 text-amber-500 hover:bg-slate-700" :
+                          canAfford ? "bg-amber-500 text-slate-950 hover:bg-amber-400 shadow-amber-500/20" : 
+                          "bg-slate-800 text-slate-500 cursor-not-allowed"
+                        }`}
+                        disabled={currentUser && isUserPremium(currentUser) && !canAfford}
+                      >
+                        {!currentUser ? "Giriş Yap" : isPremiumOnly ? "Premium Şart" : canAfford ? "Hemen Al" : "Yetersiz"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderNavbar = () => (
     <nav className="sticky top-0 z-50 w-full bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/60 shadow-sm transition-all">
       <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 lg:h-20 flex items-center justify-between gap-4">
@@ -1080,10 +1396,10 @@ export default function App() {
           </button>
           <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
             {[
-              { id: "store", icon: Sparkles, label: "Mağaza" },
+              { id: "store", icon: Gamepad2, label: "Oyunlar" },
+              { id: "rewards", icon: Gift, label: "Ödül Mağazası" },
               { id: "library", icon: Library, label: "Kütüphanem" },
               { id: "lab", icon: FlaskConical, label: "Laboratuvar" },
-              { id: "feedback", icon: Lightbulb, label: "Fikir Kutusu" },
             ].map((tab) => {
               const TabIcon = tab.icon;
               return (
@@ -1118,10 +1434,6 @@ export default function App() {
              </button>
           </div>
 
-          <div className="hidden md:flex items-center bg-slate-900/80 border border-slate-700/50 rounded-full px-3 py-2 focus-within:border-orange-500 transition-colors">
-            <Search className="w-4 h-4 text-slate-400" />
-            <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Oyun ara..." className="bg-transparent outline-none border-none text-sm text-white ml-2 w-32 lg:w-48 placeholder-slate-500" />
-          </div>
           <button className={`md:hidden p-2.5 bg-slate-900 text-slate-400 hover:text-white rounded-full border border-slate-800 ${focusStyles}`} onClick={() => setActiveTab("store")}>
             <Search className="w-4 h-4" />
           </button>
@@ -1130,6 +1442,14 @@ export default function App() {
              <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           ) : currentUser ? (
             <div className="flex items-center gap-3 pl-2 md:border-l border-slate-800">
+              
+              {isUserPremium(currentUser) && (
+                <div className="hidden md:flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-amber-500/20 transition-colors" onClick={() => setActiveTab("rewards")} title="FAP Coin Bakiyesi">
+                   <Coins className="w-4 h-4 text-amber-500" />
+                   <span className="text-xs font-bold text-amber-400">{Number(currentUser.fapCoin || 0).toFixed(1)}</span>
+                </div>
+              )}
+
               <div className="hidden sm:flex flex-col items-end justify-center h-full cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveTab("profile")}>
                 <span className="text-sm font-bold text-white leading-tight">{String(currentUser.name || "Kullanıcı")}</span>
                 {isAdmin ? (
@@ -1180,8 +1500,8 @@ export default function App() {
     <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 z-50 pb-safe">
       <div className="flex justify-around items-center p-2">
         {[
-          { id: "store", icon: Sparkles, label: "Mağaza" },
-          { id: "library", icon: Library, label: "Kütüphane" },
+          { id: "store", icon: Gamepad2, label: "Oyunlar" },
+          { id: "rewards", icon: Gift, label: "Ödüller" },
           { id: "premium", icon: Crown, label: "Premium" },
           { id: "profile", icon: User, label: "Profilim" },
         ].map(tab => {
@@ -1193,12 +1513,6 @@ export default function App() {
              </button>
            )
         })}
-        {isAdmin && (
-          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center p-2 rounded-lg transition-colors ${focusStyles} ${activeTab === "admin" ? "text-amber-400" : "text-slate-500 hover:text-amber-400"}`}>
-            <Lock className="w-6 h-6 mb-1" />
-            <span className="text-[10px] font-bold">Admin</span>
-          </button>
-        )}
       </div>
     </div>
   );
@@ -1507,7 +1821,7 @@ export default function App() {
                          <button onClick={(e) => handleShareGame(game, e)} className="p-2 text-slate-400 hover:text-orange-400 hover:bg-orange-500/10 rounded-lg transition-colors" title="Oyunu Paylaş">
                            <Share2 className="w-4 h-4 md:w-5 md:h-5" />
                          </button>
-                         <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm transition-colors ${btnClass}`}>
+                         <button tabIndex={-1} className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors ${btnClass}`}>
                            {btnText}
                          </button>
                       </div>
@@ -1784,7 +2098,6 @@ export default function App() {
             </div>
           )}
 
-          {/* OYUNA ÖZEL İSTATİSTİKLER (YENİ EKLENDİ) */}
           <div className="mt-8 pt-8 border-t border-slate-800">
             <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
               <Gamepad2 className="w-4 h-4 text-orange-500" /> Oyun İstatistikleri
@@ -1935,6 +2248,48 @@ export default function App() {
       }
     };
 
+    const handleOrderStatus = async (orderId, newStatus, userId, fapCost) => {
+       try {
+         await updateDoc(doc(db, "orders", orderId), { status: newStatus });
+         if (newStatus === "İptal/İade Edildi") {
+            await updateDoc(doc(db, "users", userId), { fapCoin: increment(fapCost) });
+            alert("Sipariş iptal edildi ve kullanıcının coinleri iade edildi.");
+         } else {
+            alert(`Sipariş durumu güncellendi: ${newStatus}`);
+         }
+       } catch (err) {
+         console.error("Sipariş güncelleme hatası", err);
+       }
+    };
+
+    const handleAddProduct = async (e) => {
+      e.preventDefault();
+      try {
+        await addDoc(collection(db, "store_products"), {
+          ...newProductData,
+          price: Number(newProductData.price),
+          createdAt: serverTimestamp()
+        });
+        setNewProductData({ name: '', price: '', image: '', desc: '', type: 'Dijital' });
+        alert("Ürün başarıyla mağazaya eklendi!");
+      } catch(err) {
+        console.error("Ürün ekleme hatası", err);
+      }
+    };
+    
+    const handleDeleteProduct = async (id) => {
+      if(window.confirm("Bu ürünü mağazadan silmek istediğinize emin misiniz?")) {
+        await deleteDoc(doc(db, "store_products", id));
+      }
+    };
+
+    const loadDefaultProducts = async () => {
+      for(const prod of DEFAULT_STORE_PRODUCTS) {
+         await addDoc(collection(db, "store_products"), { ...prod, createdAt: serverTimestamp() });
+      }
+      alert("Varsayılan ürünler başarıyla yüklendi!");
+    };
+
     return (
       <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -1945,8 +2300,10 @@ export default function App() {
             </div>
             <p className="text-amber-200/60 text-sm">Canlı Veritabanı Kontrol Merkezi</p>
           </div>
-          <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1">
+          <div className="flex flex-wrap bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
             <button onClick={() => setAdminTab("users")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "users" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Kullanıcılar</button>
+            <button onClick={() => setAdminTab("orders")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "orders" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Siparişler</button>
+            <button onClick={() => setAdminTab("products")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "products" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Mağaza Yönetimi</button>
             <button onClick={() => setAdminTab("feedbacks")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${adminTab === "feedbacks" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>Fikir Kutusu</button>
           </div>
         </div>
@@ -1965,7 +2322,7 @@ export default function App() {
                 <thead>
                   <tr className="bg-slate-900 text-slate-400 text-xs uppercase border-b border-slate-800">
                     <th className="px-6 py-4 font-semibold">Kullanıcı (Kod)</th>
-                    <th className="px-6 py-4 font-semibold">E-posta</th>
+                    <th className="px-6 py-4 font-semibold text-center">Coin / Oyun</th>
                     <th className="px-6 py-4 font-semibold text-center">Durum</th>
                     <th className="px-6 py-4 font-semibold text-right">İşlem</th>
                   </tr>
@@ -1979,9 +2336,13 @@ export default function App() {
                       <tr key={user.id} className={`hover:bg-slate-800/30 transition-colors ${isPending ? "bg-amber-900/10" : ""}`}>
                         <td className="px-6 py-4">
                            <div className="text-sm font-medium text-white">{String(user.name || "Kullanıcı")}</div>
+                           <div className="text-[10px] text-slate-400">{String(user.email || "E-posta Yok")}</div>
                            <div className="text-[10px] text-orange-400 font-mono mt-0.5">Kod: {String(user.paymentCode || "KOD-YOK")}</div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-400">{String(user.email || "E-posta Yok")}</td>
+                        <td className="px-6 py-4 text-center">
+                           <div className="text-sm font-bold text-amber-400 flex items-center justify-center gap-1"><Coins className="w-3.5 h-3.5"/> {Number(user.fapCoin || 0).toFixed(1)}</div>
+                           <div className="text-[10px] text-slate-500">{Number(user.playCount || 0)} Oyun</div>
+                        </td>
                         <td className="px-6 py-4 text-center">
                         <div className="flex flex-col items-center gap-1">
                           {isPending ? (
@@ -2020,6 +2381,41 @@ export default function App() {
           </div>
         )}
 
+        {adminTab === "orders" && (
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
+              {ordersList.map(order => (
+                <div key={order.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                   <div className="flex justify-between items-start mb-4">
+                      <div>
+                         <span className={`text-[10px] font-bold px-2 py-1 rounded border ${order.status === "Onay Bekliyor" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : order.status === "Kargolandı / İletildi" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
+                           {String(order.status)}
+                         </span>
+                         <div className="text-lg font-bold text-white mt-2">{String(order.productName)}</div>
+                         <div className="text-xs text-amber-500 font-bold">{Number(order.fapCost)} FAP Harcandı</div>
+                      </div>
+                      <div className="text-[10px] text-slate-500 text-right">
+                         Tarih: {String(order.displayDate)}
+                      </div>
+                   </div>
+                   <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-sm mb-4 space-y-2">
+                      <p><span className="text-slate-500">Kullanıcı:</span> <span className="text-white">{String(order.userName)}</span></p>
+                      <p><span className="text-slate-500">E-posta:</span> <a href={`mailto:${order.userEmail}`} className="text-blue-400 hover:underline">{String(order.userEmail)}</a></p>
+                      {order.productType === "Fiziksel" && (
+                        <p className="border-t border-slate-800 pt-2 mt-2"><span className="text-slate-500 block mb-1">Teslimat Adresi:</span> <span className="text-slate-300">{String(order.addressDetails)}</span></p>
+                      )}
+                   </div>
+                   {order.status === "Onay Bekliyor" && (
+                     <div className="flex gap-3">
+                        <button onClick={() => handleOrderStatus(order.id, "Kargolandı / İletildi", order.userId, order.fapCost)} className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors text-sm">Onayla & İlet</button>
+                        <button onClick={() => handleOrderStatus(order.id, "İptal/İade Edildi", order.userId, order.fapCost)} className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-red-400 font-bold rounded-lg transition-colors border border-slate-700 text-sm">Reddet (İade Et)</button>
+                     </div>
+                   )}
+                </div>
+              ))}
+              {ordersList.length === 0 && <div className="col-span-full p-10 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">Henüz sipariş yok.</div>}
+           </div>
+        )}
+
         {adminTab === "feedbacks" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
             {feedbacks.map((fb) => (
@@ -2056,12 +2452,71 @@ export default function App() {
             {feedbacks.length === 0 && <div className="col-span-full p-10 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">Hiç fikir gelmemiş.</div>}
           </div>
         )}
+
+        {adminTab === "products" && (
+          <div className="space-y-6 animate-in fade-in">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><Gift className="w-5 h-5 text-amber-500"/> Yeni Ürün Ekle</h3>
+              <form onSubmit={handleAddProduct} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input required type="text" placeholder="Ürün Adı (Örn: 100 TL Steam Kodu)" value={newProductData.name} onChange={e => setNewProductData({...newProductData, name: e.target.value})} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-amber-500 outline-none" />
+                <input required type="number" placeholder="FAP Coin Fiyatı (Örn: 350)" value={newProductData.price} onChange={e => setNewProductData({...newProductData, price: e.target.value})} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-amber-500 outline-none" />
+                <input required type="url" placeholder="Görsel URL (Örn: https://...)" value={newProductData.image} onChange={e => setNewProductData({...newProductData, image: e.target.value})} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-amber-500 outline-none" />
+                <select value={newProductData.type} onChange={e => setNewProductData({...newProductData, type: e.target.value})} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-amber-500 outline-none">
+                  <option value="Dijital">Dijital Ürün (Kod vb.)</option>
+                  <option value="Fiziksel">Fiziksel Ürün (Kargo)</option>
+                </select>
+                <textarea required placeholder="Ürün Açıklaması..." value={newProductData.desc} onChange={e => setNewProductData({...newProductData, desc: e.target.value})} className="col-span-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-amber-500 outline-none min-h-[100px]" />
+                <div className="col-span-full flex gap-3">
+                   <button type="submit" className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-xl transition-colors">Ürünü Mağazaya Ekle</button>
+                   {storeProducts.length === 0 && (
+                     <button type="button" onClick={loadDefaultProducts} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 font-bold rounded-xl transition-colors">Varsayılanları Yükle</button>
+                   )}
+                </div>
+              </form>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {storeProducts.map(prod => (
+                 <div key={prod.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col">
+                   <img src={prod.image} alt={prod.name} className="w-full h-32 object-cover rounded-lg mb-3 opacity-80" />
+                   <h4 className="text-white font-bold text-sm mb-1">{String(prod.name)}</h4>
+                   <div className="text-amber-500 font-bold text-sm mb-3 flex items-center gap-1"><Coins className="w-4 h-4"/> {Number(prod.price)} FAP</div>
+                   <button onClick={() => handleDeleteProduct(prod.id)} className="mt-auto py-2 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-lg text-xs font-bold transition-colors w-full border border-red-500/20">Mağazadan Sil</button>
+                 </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-orange-500/30 flex flex-col overflow-x-hidden w-full">
+      {firebaseRulesError && (
+        <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-red-500/50 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+             <ShieldAlert className="w-16 h-16 text-red-500 mx-auto mb-4 animate-pulse" />
+             <h2 className="text-2xl font-black text-white mb-2">Firebase İzin Hatası</h2>
+             <p className="text-slate-300 text-sm mb-4 leading-relaxed">
+               Veritabanına okuma/yazma izniniz yok. Lütfen <b>Firebase Console &gt; Firestore Database &gt; Rules</b> sekmesine giderek kurallarınızı aşağıdaki gibi güncelleyin:
+             </p>
+             <pre className="bg-slate-950 p-4 rounded-xl text-left text-emerald-400 text-xs overflow-x-auto border border-slate-800 mb-6">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+             </pre>
+             <button onClick={() => setFirebaseRulesError(false)} className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-colors">
+               Anladım, Kapat
+             </button>
+          </div>
+        </div>
+      )}
       {renderInstallGuideModal()}
       {renderTrialPromptModal()}
       {renderPremiumWarningModal()}
@@ -2071,6 +2526,7 @@ export default function App() {
       {paymentIntent && renderPaymentCodeModal()}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 md:px-6 py-6 md:py-12 pb-24 md:pb-12">
         {activeTab === "store" && renderStore()}
+        {activeTab === "rewards" && renderRewardsStore()} 
         {activeTab === "library" && renderLibrary()}
         {activeTab === "premium" && renderPremiumPage()}
         {activeTab === "lab" && renderLab()}
