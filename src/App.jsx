@@ -716,13 +716,16 @@ export default function App() {
     if (!db) return;
 
     setStoreLoading(true);
-    const unsubscribeProducts = onSnapshot(collection(db, "store_products"), (snapshot) => {
-      setStoreProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-      setStoreLoading(false);
-    }, (err) => {
-      handleFirebaseError(err);
-      setStoreLoading(false);
-    });
+    const unsubscribeProducts = onSnapshot(
+      query(collection(db, "store_products"), orderBy("createdAt", "desc")),
+      (snapshot) => {
+        setStoreProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        setStoreLoading(false);
+      }, (err) => {
+        handleFirebaseError(err);
+        setStoreLoading(false);
+      }
+    );
 
     const unsubscribeFeedbacks = onSnapshot(
       query(collection(db, "feedbacks"), orderBy("createdAt", "desc")),
@@ -834,8 +837,8 @@ export default function App() {
       ? Number(currentUser.dailyFap || 0)
       : 0;
 
-    // DÜZELTİLDİ: Günlük limit kontrolü (8 FAP = 8 adet 0.5'lik)
-    if (currentDailyFap >= 8) return;
+    // Günde maksimum 16 coin (32 adet 10 dk'lık oturum × 0.5)
+    if (currentDailyFap >= 16) return;
 
     try {
       const addedAmount = 0.5;
@@ -912,18 +915,20 @@ export default function App() {
       }
     }, 60000);
 
-    // FAP Coin kazanım interval'i — sadece premium üyeler için
+    // FAP Coin kazanım — sadece premium, sadece oyun içinde aktif tab, 10 dk = 0.5 coin
     if (currentUser && isUserPremium(currentUser)) {
       let activeSeconds = 0;
       fapCoinIntervalRef.current = setInterval(() => {
+        // Kullanıcı başka sekmeye geçtiyse saymayı durdur
         if (!document.hidden) {
-          activeSeconds += 10;
-          if (activeSeconds >= 600) { // 10 dakika
+          activeSeconds += 15;
+          // 600 saniye = 10 dakika aktif oyun tamamlandı
+          if (activeSeconds >= 600) {
             handleEarnFapCoin();
             activeSeconds = 0;
           }
         }
-      }, 10000);
+      }, 15000); // 15 saniyede bir kontrol et
     }
   }, [currentUser, handleEarnFapCoin, handleFirebaseError]);
 
@@ -1154,10 +1159,10 @@ export default function App() {
     }
   };
 
-  // DÜZELTİLDİ: Bot simülasyonu — admin'in kendi hesabı üzerinden çalışır.
-  // Firestore kuralları "sim_bot_999" gibi sahte UID'ye izin vermez.
-  // Bu yüzden bot; admin'in kendi playCount/fapCoin'ini artırır ve
-  // feedbackleri admin adına gönderir.
+  // BOT SİMÜLASYONU
+  // Gerçek coin mantığıyla çalışır: handleEarnFapCoin üzerinden,
+  // günlük 16 coin limiti uygulanır.
+  // Test hızlandırması: 30 saniye = 10 dakikalık oturumu simüle eder.
   const toggleBotSimulation = async () => {
     if (isBotRunning) {
       if (botIntervalRef.current) {
@@ -1175,33 +1180,55 @@ export default function App() {
     }
 
     setIsBotRunning(true);
-    alert("Bot başlatıldı! Admin hesabı üzerinden test verileri üretiliyor.");
+    alert(
+      "Test Botu başlatıldı!\n\n" +
+      "• Her 30 saniyede 1 oyun oturumu simüle edilir (gerçekte 10 dk)\n" +
+      "• Günlük 16 coin limiti uygulanır\n" +
+      "• %25 ihtimalle [BOT TEST] feedback gönderilir\n" +
+      "• Coin kazanımı handleEarnFapCoin üzerinden geçer (gerçekçi test)"
+    );
 
     botIntervalRef.current = setInterval(async () => {
       try {
-        const randomGame = GAMES[Math.floor(Math.random() * GAMES.length)];
+        const randomGame = GAMES.filter(g => g.status === "Yayında")[
+          Math.floor(Math.random() * GAMES.filter(g => g.status === "Yayında").length)
+        ];
 
-        // Admin'in kendi user dokümanını güncelle (kurallar geçer)
+        // playCount artır (oturum sayısı)
         await updateDoc(doc(db, "users", currentUser.id), {
-          fapCoin: increment(0.5),
           playCount: increment(1),
           lastPlayedGameName: randomGame.title,
           lastLogin: serverTimestamp(),
           [`gamePlayCounts.${randomGame.id}`]: increment(1)
         }).catch(handleFirebaseError);
 
-        // Admin adına feedback gönder (kurallar geçer: userId == auth.uid)
-        if (Math.random() < 0.2) {
+        setCurrentUser(prev => prev ? ({
+          ...prev,
+          playCount: (Number(prev.playCount) || 0) + 1,
+          lastPlayedGameName: randomGame.title,
+          gamePlayCounts: {
+            ...(prev.gamePlayCounts || {}),
+            [randomGame.id]: (Number((prev.gamePlayCounts || {})[randomGame.id]) || 0) + 1
+          }
+        }) : null);
+
+        // Coin kazanımı — gerçek mantıktan geçer, günlük limit uygulanır
+        await handleEarnFapCoin();
+
+        // %25 ihtimalle feedback
+        if (Math.random() < 0.25) {
           const feedbackTexts = [
-            "[BOT TEST] Oyun çok eğlenceli!",
-            "[BOT TEST] Biraz optimize edilebilir.",
-            "[BOT TEST] Bağlantı sorunu yaşadım.",
-            "[BOT TEST] Yeni özellik öneririm.",
-            "[BOT TEST] Harika bir deneyim!"
+            "Oyun akıcı çalışıyor, beğendim.",
+            "Yükleme süresi biraz uzun.",
+            "Mobilde butonlar daha büyük olabilir.",
+            "Skor tablosu harika olurdu!",
+            "Sesler eklenirse çok güzel olur.",
+            "Arkadaş davet sistemi bekliyorum.",
+            "Renkler gözü yormuyor, başarılı."
           ];
           await addDoc(collection(db, "feedbacks"), {
             userId: currentUser.id,
-            user: `[BOT] ${currentUser.name || "Admin"}`,
+            user: `[BOT TEST] ${currentUser.name || "Admin"}`,
             email: String(currentUser.email),
             game: randomGame.title,
             text: feedbackTexts[Math.floor(Math.random() * feedbackTexts.length)],
@@ -1212,22 +1239,10 @@ export default function App() {
           }).catch(handleFirebaseError);
         }
 
-        // Local state'i de güncelle
-        setCurrentUser(prev => prev ? ({
-          ...prev,
-          fapCoin: (Number(prev.fapCoin) || 0) + 0.5,
-          playCount: (Number(prev.playCount) || 0) + 1,
-          lastPlayedGameName: randomGame.title,
-          gamePlayCounts: {
-            ...(prev.gamePlayCounts || {}),
-            [randomGame.id]: (Number((prev.gamePlayCounts || {})[randomGame.id]) || 0) + 1
-          }
-        }) : null);
-
       } catch (e) {
         handleFirebaseError(e);
       }
-    }, 8000);
+    }, 30000); // Her 30 saniye = 10 dakikalık oturumu simüle eder
   };
 
   // =========================================================================
@@ -2345,17 +2360,76 @@ export default function App() {
           </div>
 
           {/* FAP Coin Bölümü */}
-          <div className="mt-8 bg-gradient-to-r from-amber-500/10 to-orange-600/10 border border-amber-500/30 rounded-3xl p-8 flex flex-col items-center text-center relative overflow-hidden">
-            <Coins className="w-16 h-16 text-amber-400 mb-4 drop-shadow-lg" />
-            <div className="text-sm font-bold text-amber-500 uppercase tracking-widest mb-2">FAP Coin Bakiyesi</div>
-            <div className="text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-500">
-              {Number(currentUser.fapCoin || 0).toFixed(1)}
-            </div>
-            <p className="text-slate-400 text-sm mt-4 max-w-md">Oynadıkça FAP Coin biriktir, mağazadaki ödüllerin sahibi ol!</p>
-            <button onClick={() => setActiveTab("rewards")} className="mt-6 px-8 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl transition-all shadow-lg hover:scale-105">
-              Mağazaya Git
-            </button>
-          </div>
+          {(() => {
+            const todayStr = new Date().toLocaleDateString('tr-TR');
+            const dailyEarned = currentUser.lastFapDate === todayStr ? Number(currentUser.dailyFap || 0) : 0;
+            const dailyMax = 16;
+            const dailyPct = Math.min(100, (dailyEarned / dailyMax) * 100);
+            const remainingToday = Math.max(0, dailyMax - dailyEarned);
+            const isPremium = isUserPremium(currentUser);
+            return (
+              <div className="mt-8 bg-gradient-to-r from-amber-500/10 to-orange-600/10 border border-amber-500/30 rounded-3xl p-6 md:p-8 relative overflow-hidden">
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  <div className="flex flex-col items-center text-center md:items-start md:text-left flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Coins className="w-6 h-6 text-amber-400" />
+                      <span className="text-sm font-bold text-amber-500 uppercase tracking-widest">FAP Coin Bakiyesi</span>
+                    </div>
+                    <div className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-500 mb-2">
+                      {Number(currentUser.fapCoin || 0).toFixed(1)}
+                    </div>
+                    <p className="text-slate-400 text-sm max-w-sm">
+                      {isPremium
+                        ? "Oynadıkça biriktir, mağazadan gerçek ödüller al!"
+                        : "FAP Coin kazanmak için Premium üye olman gerekiyor."}
+                    </p>
+                  </div>
+                  {isPremium && (
+                    <div className="w-full md:w-64 bg-slate-950/60 rounded-2xl p-5 border border-amber-500/20 shrink-0">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-bold text-slate-400 uppercase">Bugünkü Kazanım</span>
+                        <span className="text-xs font-black text-amber-400">{dailyEarned.toFixed(1)} / {dailyMax} FAP</span>
+                      </div>
+                      <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden mb-2">
+                        <div
+                          className="h-3 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${dailyPct}%`,
+                            background: dailyPct >= 100
+                              ? 'linear-gradient(90deg, #10b981, #34d399)'
+                              : 'linear-gradient(90deg, #f59e0b, #f97316)'
+                          }}
+                        />
+                      </div>
+                      {dailyPct >= 100 ? (
+                        <p className="text-[10px] text-emerald-400 font-bold text-center">✓ Günlük limit doldu, yarın devam!</p>
+                      ) : (
+                        <p className="text-[10px] text-slate-500 text-center">
+                          Bugün {remainingToday.toFixed(1)} FAP daha kazanabilirsin
+                        </p>
+                      )}
+                      <div className="mt-3 pt-3 border-t border-slate-800/50">
+                        <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                          Her <b className="text-slate-400">10 dk</b> aktif oyun → <b className="text-amber-400">+0.5 FAP</b><br />
+                          Günde maks <b className="text-amber-400">16 FAP</b> (32 oturum)
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                  <button onClick={() => setActiveTab("rewards")} className="flex-1 sm:flex-none px-8 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl transition-all shadow-lg hover:scale-105">
+                    Mağazaya Git
+                  </button>
+                  {!isPremium && (
+                    <button onClick={() => setActiveTab("premium")} className="flex-1 sm:flex-none px-8 py-3 bg-slate-800 hover:bg-slate-700 border border-amber-500/30 text-amber-400 font-bold rounded-xl transition-all">
+                      <Crown className="w-4 h-4 inline mr-2" />Premium Ol, Kazan
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* İstatistikler */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-800">
@@ -2494,46 +2568,56 @@ export default function App() {
 
     const handleAddProduct = async (e) => {
       e.preventDefault();
-      // DÜZELTİLDİ: Güçlü validasyon
-      if (!newProductData.name?.trim() || !newProductData.price || !newProductData.image?.trim() || !newProductData.desc?.trim()) {
+
+      if (!newProductData.name?.trim() || !newProductData.image?.trim() || !newProductData.desc?.trim()) {
         alert("Lütfen tüm alanları doldurun!");
         return;
       }
       const price = Number(newProductData.price);
       if (isNaN(price) || price <= 0 || price > 100000) {
-        alert("Geçerli bir fiyat girin (1 - 100.000).");
+        alert("Geçerli bir fiyat girin (1 ile 100.000 arasında).");
         return;
       }
-      // DÜZELTİLDİ: URL validasyonu
-      try { new URL(newProductData.image); } catch {
-        alert("Geçerli bir görsel URL'i girin.");
+      // Görsel URL kontrolü — http/https ile başlamıyorsa da kabul et (CDN vb.)
+      const imgUrl = String(newProductData.image).trim();
+      if (!imgUrl.startsWith('http')) {
+        alert("Görsel URL'i http:// veya https:// ile başlamalıdır.");
         return;
       }
 
       const productToSave = {
-        name: sanitizeText(newProductData.name),
+        name: sanitizeText(newProductData.name).substring(0, 150),
         price: price,
-        image: String(newProductData.image).trim(),
-        desc: sanitizeText(newProductData.desc),
+        image: imgUrl,
+        desc: sanitizeText(newProductData.desc).substring(0, 500),
         type: ["Dijital", "Fiziksel"].includes(newProductData.type) ? newProductData.type : "Dijital",
         isVisible: newProductData.isVisible !== false
       };
 
       try {
         if (editingProductId) {
+          // Update: mevcut dokümanı güncelle, createdAt'e dokunma
           await updateDoc(doc(db, "store_products", editingProductId), productToSave);
-          alert("Ürün başarıyla güncellendi!");
+          alert(`"${productToSave.name}" başarıyla güncellendi!`);
         } else {
+          // Create: createdAt ekle, en üste çıksın (desc sıralama ile)
           await addDoc(collection(db, "store_products"), {
-            ...productToSave, createdAt: serverTimestamp()
+            ...productToSave,
+            createdAt: serverTimestamp()
           });
-          alert("Ürün mağazaya eklendi!");
+          alert(`"${productToSave.name}" mağazaya eklendi!`);
         }
+        // Formu sıfırla
         setNewProductData({ name: '', price: '', image: '', desc: '', type: 'Dijital', isVisible: true });
         setEditingProductId(null);
       } catch (err) {
         handleFirebaseError(err);
-        alert("Ürün kaydedilirken hata oluştu.");
+        console.error("Ürün kayıt hatası:", err?.code, err?.message);
+        alert(
+          "Ürün kaydedilirken hata oluştu.\n" +
+          "Firestore rules 'isAdmin()' kontrolünü geçtiğinizden emin olun.\n" +
+          "Hata: " + (err?.code || err?.message || "Bilinmiyor")
+        );
       }
     };
 
@@ -2541,13 +2625,43 @@ export default function App() {
       setEditingProductId(prod.id);
       setNewProductData({
         name: prod.name || '',
-        price: prod.price || '',
+        price: String(prod.price || ''),  // input için string
         image: prod.image || '',
         desc: prod.desc || '',
         type: prod.type || 'Dijital',
         isVisible: prod.isVisible !== false
       });
+      // Forma kaydır
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // Tüm mağaza ürünlerini tek seferde sil
+    const handleClearAllProducts = async () => {
+      if (storeProducts.length === 0) { alert("Mağazada zaten ürün yok."); return; }
+      const confirmed = window.confirm(
+        `⚠️ DİKKAT!\n\nMağazadaki ${storeProducts.length} ürünün TAMAMI silinecek.\nBu işlem geri alınamaz!\n\nDevam etmek istiyor musunuz?`
+      );
+      if (!confirmed) return;
+      try {
+        // Batch ile hepsini sil
+        const { writeBatch } = await import("firebase/firestore");
+        const batch = writeBatch(db);
+        storeProducts.forEach(prod => batch.delete(doc(db, "store_products", prod.id)));
+        await batch.commit();
+        alert("Tüm ürünler silindi. Artık admin panelinden yeni ürünler ekleyebilirsiniz.");
+      } catch (err) {
+        handleFirebaseError(err);
+        // Batch import çalışmazsa tek tek sil
+        try {
+          for (const prod of storeProducts) {
+            await deleteDoc(doc(db, "store_products", prod.id));
+          }
+          alert("Tüm ürünler silindi.");
+        } catch (e2) {
+          handleFirebaseError(e2);
+          alert("Silme işlemi sırasında hata oluştu.");
+        }
+      }
     };
 
     const toggleProductVisibility = async (id, currentVisibility) => {
@@ -2729,6 +2843,23 @@ export default function App() {
                 </div>
               </form>
             </div>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-400">
+                Mağazadaki Ürünler{" "}
+                <span className="text-white">({storeProducts.length})</span>
+                {storeProducts.length > 0 && (
+                  <span className="ml-2 text-[10px] text-emerald-400 font-normal">En yeni üste gösterilir</span>
+                )}
+              </h3>
+              {storeProducts.length > 0 && (
+                <button
+                  onClick={handleClearAllProducts}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold rounded-xl transition-colors text-xs"
+                >
+                  <Trash className="w-3.5 h-3.5" /> Tüm Mağazayı Temizle
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {storeProducts.length === 0 ? (
                 <div className="col-span-full p-10 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">Henüz ürün yok.</div>
@@ -2787,11 +2918,12 @@ export default function App() {
             <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
               <h4 className="text-white font-bold mb-2 flex items-center gap-2 text-sm"><Info className="w-4 h-4 text-amber-500" /> Bot Hakkında</h4>
               <ul className="text-xs text-slate-400 space-y-1 list-disc list-inside">
-                <li>Her 8 saniyede bir işlem yapar</li>
-                <li>Her işlemde admin hesabına 0.5 FAP Coin ekler</li>
-                <li>%20 ihtimalle admin adına [BOT TEST] feedback gönderir</li>
-                <li>Firestore kurallarıyla uyumlu: admin'in kendi hesabı üzerinden çalışır</li>
-                <li>Durdurunca istatistikler olduğu yerde kalır (test verisi)</li>
+                <li><b className="text-white">Her 30 saniye</b> = 10 dakikalık oyun oturumunu simüle eder</li>
+                <li>Coin kazanımı <b className="text-white">handleEarnFapCoin</b> üzerinden geçer — günlük 16 coin limiti uygulanır</li>
+                <li>%25 ihtimalle [BOT TEST] feedback gönderir (fikir kutusu testi için)</li>
+                <li>Sadece aktif oyun olan oyunlar seçilir</li>
+                <li>Admin hesabı üzerinden çalışır — Firestore kurallarıyla uyumlu</li>
+                <li>Durdurunca veriler kalır (gerçekçi test verileri)</li>
               </ul>
             </div>
           </div>
