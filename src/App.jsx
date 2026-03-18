@@ -416,6 +416,7 @@ export default function App() {
   const [adminSearch, setAdminSearch] = useState("");
   const [newProductData, setNewProductData] = useState({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
   const [editingProductId, setEditingProductId] = useState(null);
+  const editingProductIdRef = useRef(null); // Ref: stale closure'a karşı güvence
   const [isBotRunning, setIsBotRunning] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
@@ -769,26 +770,80 @@ export default function App() {
   // Admin Store
   const saveProduct = async e => {
     e.preventDefault();
-    if (!newProductData.name?.trim()||!newProductData.image?.trim()||!newProductData.desc?.trim()) { alert("Tüm alanları doldurun."); return; }
-    const price=Number(newProductData.price);
-    if (isNaN(price)||price<=0||price>100000) { alert("Geçerli fiyat girin (1-100.000)."); return; }
-    if (!newProductData.image.startsWith('http')) { alert("URL http/https ile başlamalı."); return; }
-    const prod = { name:sanitizeText(newProductData.name).substring(0,150), price, image:newProductData.image.trim(), desc:sanitizeText(newProductData.desc).substring(0,500), type:["Dijital","Fiziksel"].includes(newProductData.type)?newProductData.type:"Dijital", isVisible:newProductData.isVisible!==false };
+    // Ref'ten al — stale closure'a karşı güvence
+    const currentEditId = editingProductIdRef.current;
+
+    if (!newProductData.name?.trim()||!newProductData.image?.trim()||!newProductData.desc?.trim()) {
+      alert("Lütfen tüm alanları doldurun."); return;
+    }
+    const price = Number(newProductData.price);
+    if (isNaN(price)||price<=0||price>100000) {
+      alert("Geçerli bir fiyat girin (1 - 100.000)."); return;
+    }
+    if (!newProductData.image.startsWith('http')) {
+      alert("Görsel URL'i http:// veya https:// ile başlamalıdır."); return;
+    }
+
+    const prod = {
+      name: sanitizeText(newProductData.name).substring(0,150),
+      price,
+      image: newProductData.image.trim(),
+      desc: sanitizeText(newProductData.desc).substring(0,500),
+      type: ["Dijital","Fiziksel"].includes(newProductData.type) ? newProductData.type : "Dijital",
+      isVisible: newProductData.isVisible !== false
+    };
+
     try {
-      if (editingProductId) { await setDoc(doc(db,"store_products",editingProductId),prod,{merge:true}); alert("Ürün güncellendi!"); }
-      else { await addDoc(collection(db,"store_products"),{...prod,createdAt:serverTimestamp()}); alert("Ürün eklendi!"); }
-      setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true}); setEditingProductId(null);
-    } catch(e){ handleFirebaseError(e); alert("Kaydedilemedi: "+(e?.code||e?.message)); }
+      if (currentEditId) {
+        // Güncelleme: updateDoc kullan — setDoc(merge) yerine daha güvenilir
+        await updateDoc(doc(db, "store_products", currentEditId), prod);
+        alert(`"${prod.name}" başarıyla güncellendi!`);
+      } else {
+        // Yeni ürün ekle
+        await addDoc(collection(db, "store_products"), { ...prod, createdAt: serverTimestamp() });
+        alert(`"${prod.name}" mağazaya eklendi!`);
+      }
+      // Formu sıfırla
+      setNewProductData({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
+      setEditingProductId(null);
+      editingProductIdRef.current = null;
+    } catch(err) {
+      handleFirebaseError(err);
+      alert(
+        "Kaydetme başarısız!\n" +
+        "Hata: " + (err?.code || err?.message || "bilinmiyor") + "\n\n" +
+        "Firestore Console → Rules → store_products için\n" +
+        "'allow update: if isAdmin()' kuralının aktif olduğunu kontrol edin."
+      );
+    }
   };
+
   const editProduct = prod => {
+    if (!prod.id) { alert("Ürün ID'si bulunamadı."); return; }
+    // Hem state hem ref'i güncelle
     setEditingProductId(prod.id);
-    setNewProductData({name:prod.name||'',price:String(prod.price||''),image:prod.image||'',desc:prod.desc||'',type:prod.type||'Dijital',isVisible:prod.isVisible!==false});
-    window.scrollTo({top:0,behavior:'smooth'});
+    editingProductIdRef.current = prod.id;
+    setNewProductData({
+      name: prod.name || '',
+      price: String(prod.price || ''),
+      image: prod.image || '',
+      desc: prod.desc || '',
+      type: prod.type || 'Dijital',
+      isVisible: prod.isVisible !== false
+    });
+    // Forma kaydır
+    document.getElementById('product-form-section')?.scrollIntoView({ behavior:'smooth', block:'start' });
+  };
+
+  const cancelEdit = () => {
+    setEditingProductId(null);
+    editingProductIdRef.current = null;
+    setNewProductData({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
   };
   const toggleVisibility = async (id, vis) => {
-    if (!id) return;
-    try { await setDoc(doc(db,"store_products",id),{isVisible:!vis},{merge:true}); }
-    catch(e){ handleFirebaseError(e); alert("Hata: "+(e?.code||e?.message)); }
+    if (!id) { alert("Ürün ID bulunamadı."); return; }
+    try { await updateDoc(doc(db,"store_products",id),{isVisible:!vis}); }
+    catch(e){ handleFirebaseError(e); alert("Görünürlük değiştirilemedi: "+(e?.code||e?.message)); }
   };
   const deleteProduct = async id => {
     if (!id){alert("Ürün ID bulunamadı.");return;}
@@ -1607,55 +1662,99 @@ export default function App() {
         </div>
       )}
 
-      {/* Products */}
-      {adminTab==="products"&&(
-        <div className="space-y-5">
-          <div className={`bg-slate-900 border ${editingProductId?"border-amber-500":"border-slate-800"} rounded-2xl p-6 transition-colors`}>
-            <h3 className="font-bold text-white mb-4 flex items-center gap-2">{editingProductId?<><Edit className="w-4 h-4 text-amber-500"/>Ürünü Düzenle</>:<><Plus className="w-4 h-4 text-emerald-500"/>Yeni Ürün Ekle</>}</h3>
-            <form onSubmit={saveProduct} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input required type="text" placeholder="Ürün Adı" value={newProductData.name} onChange={e=>setNewProductData({...newProductData,name:e.target.value})} maxLength={150} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none"/>
-              <input required type="number" placeholder="FAP Coin Fiyatı" value={newProductData.price} onChange={e=>setNewProductData({...newProductData,price:e.target.value})} min="1" max="100000" className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none"/>
-              <input required type="url" placeholder="Görsel URL (https://...)" value={newProductData.image} onChange={e=>setNewProductData({...newProductData,image:e.target.value})} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none"/>
-              <select value={newProductData.type} onChange={e=>setNewProductData({...newProductData,type:e.target.value})} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none">
-                <option value="Dijital">Dijital Ürün</option><option value="Fiziksel">Fiziksel Ürün (Kargo)</option>
-              </select>
-              <textarea required placeholder="Ürün Açıklaması..." value={newProductData.desc} onChange={e=>setNewProductData({...newProductData,desc:e.target.value})} maxLength={500} className="col-span-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none min-h-[80px] resize-none"/>
-              <div className="col-span-full flex gap-3">
-                <button type="submit" className={`flex-1 py-2.5 ${editingProductId?"bg-amber-600 hover:bg-amber-500":"bg-emerald-600 hover:bg-emerald-500"} text-white font-bold rounded-xl text-sm`}>{editingProductId?"Değişiklikleri Kaydet":"Mağazaya Ekle"}</button>
-                {editingProductId&&<button type="button" onClick={()=>{setEditingProductId(null);setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true});}} className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm">İptal</button>}
-              </div>
-            </form>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-400">Ürünler <span className="text-white">({storeProducts.length})</span></span>
-            {storeProducts.length>0&&<button onClick={clearAllProducts} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold hover:bg-red-500/20"><Trash className="w-3.5 h-3.5"/>Tümünü Sil</button>}
-          </div>
-
-          {storeProducts.length===0 ? (
-            <div className="bg-slate-900 border border-slate-800 border-dashed rounded-2xl p-10 text-center text-slate-500">
-              <Package className="w-10 h-10 mx-auto mb-3 opacity-40"/><p className="text-sm">Henüz ürün yok. Yukarıdaki formu kullanın.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {storeProducts.map(p=>{
-                const vis=p.isVisible!==false;
-                return <div key={p.id} className={`bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col ${!vis?"opacity-50 grayscale":""}`}>
-                  <div className="relative h-28 overflow-hidden rounded-lg mb-3"><img src={p.image} alt={p.name} className="w-full h-full object-cover" loading="lazy"/>{!vis&&<div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xs font-black tracking-widest">GİZLİ</div>}</div>
-                  <h4 className="text-white font-bold text-xs mb-1 line-clamp-1">{p.name}</h4>
-                  <p className="text-[10px] text-slate-500 mb-2 line-clamp-2">{p.desc}</p>
-                  <div className="flex items-center gap-1 text-amber-400 font-bold text-sm mb-3"><Coins className="w-3.5 h-3.5"/>{Number(p.price)}</div>
-                  <div className="grid grid-cols-3 gap-1.5 mt-auto">
-                    <button onClick={()=>toggleVisibility(p.id,vis)} className={`py-1.5 rounded-lg flex items-center justify-center border ${vis?"bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700":"bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"}`} title={vis?"Gizle":"Yayınla"}>{vis?<EyeOff className="w-3.5 h-3.5"/>:<Eye className="w-3.5 h-3.5"/>}</button>
-                    <button onClick={()=>editProduct(p)} className="py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white rounded-lg flex items-center justify-center border border-blue-500/20"><Edit className="w-3.5 h-3.5"/></button>
-                    <button onClick={()=>deleteProduct(p.id)} className="py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-lg flex items-center justify-center border border-red-500/20"><Trash className="w-3.5 h-3.5"/></button>
+          {/* Products */}
+          {adminTab==="products"&&(
+            <div className="space-y-5">
+              {/* Form */}
+              <div id="product-form-section" className={`bg-slate-900 border-2 ${editingProductId?"border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.1)]":"border-slate-800"} rounded-2xl p-6 transition-all`}>
+                {editingProductId && (
+                  <div className="flex items-center gap-2 mb-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                    <Edit className="w-4 h-4 text-amber-500 shrink-0"/>
+                    <p className="text-amber-300 text-sm font-bold">Düzenleme modu aktif — mevcut ürün güncelleniyor, yeni ürün eklenmez.</p>
                   </div>
-                </div>;
-              })}
+                )}
+                <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                  {editingProductId
+                    ? <><Edit className="w-4 h-4 text-amber-500"/>Ürünü Düzenle</>
+                    : <><Plus className="w-4 h-4 text-emerald-500"/>Yeni Ürün Ekle</>
+                  }
+                </h3>
+                <form onSubmit={saveProduct} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Ürün Adı *</label>
+                    <input required type="text" placeholder="Örn: 100 TL Steam Kodu" value={newProductData.name} onChange={e=>setNewProductData({...newProductData,name:e.target.value})} maxLength={150} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none"/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">FAP Coin Fiyatı *</label>
+                    <input required type="number" placeholder="Örn: 350" value={newProductData.price} onChange={e=>setNewProductData({...newProductData,price:e.target.value})} min="1" max="100000" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none"/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Görsel URL *</label>
+                    <input required type="text" placeholder="https://images.unsplash.com/..." value={newProductData.image} onChange={e=>setNewProductData({...newProductData,image:e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none"/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Ürün Tipi *</label>
+                    <select value={newProductData.type} onChange={e=>setNewProductData({...newProductData,type:e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none">
+                      <option value="Dijital">Dijital (Kod / Link)</option>
+                      <option value="Fiziksel">Fiziksel (Kargo ile)</option>
+                    </select>
+                  </div>
+                  <div className="col-span-full">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Açıklama *</label>
+                    <textarea required placeholder="Ürün hakkında detaylı açıklama..." value={newProductData.desc} onChange={e=>setNewProductData({...newProductData,desc:e.target.value})} maxLength={500} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-amber-500 outline-none min-h-[80px] resize-none"/>
+                  </div>
+                  <div className="col-span-full flex gap-3">
+                    <button type="submit" className={`flex-1 py-3 font-bold rounded-xl text-sm transition-colors ${editingProductId?"bg-amber-600 hover:bg-amber-500 text-white":"bg-emerald-600 hover:bg-emerald-500 text-white"}`}>
+                      {editingProductId ? "✓ Değişiklikleri Kaydet" : "+ Mağazaya Ekle"}
+                    </button>
+                    {editingProductId && (
+                      <button type="button" onClick={cancelEdit} className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-sm border border-slate-700">
+                        İptal
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+
+              {/* Ürün listesi başlığı */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-400">Ürünler <span className="text-white">({storeProducts.length})</span>{editingProductId&&<span className="ml-2 text-amber-400 text-[11px]">↑ Düzenleme modu aktif</span>}</span>
+                {storeProducts.length>0&&<button onClick={clearAllProducts} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-colors"><Trash className="w-3.5 h-3.5"/>Tümünü Sil</button>}
+              </div>
+
+              {storeProducts.length===0 ? (
+                <div className="bg-slate-900 border border-slate-800 border-dashed rounded-2xl p-10 text-center text-slate-500">
+                  <Package className="w-10 h-10 mx-auto mb-3 opacity-40"/>
+                  <p className="text-sm font-bold text-slate-400 mb-1">Mağaza boş</p>
+                  <p className="text-xs">Yukarıdaki formu kullanarak ürün ekleyin.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {storeProducts.map(p=>{
+                    const vis=p.isVisible!==false;
+                    const isEditing = editingProductId === p.id;
+                    return (
+                      <div key={p.id} className={`bg-slate-950 border rounded-xl p-3 flex flex-col transition-all ${isEditing?"border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.2)]":!vis?"border-slate-800 opacity-50 grayscale":"border-slate-800 hover:border-slate-700"}`}>
+                        <div className="relative h-28 overflow-hidden rounded-lg mb-3">
+                          <img src={p.image} alt={p.name} className="w-full h-full object-cover" loading="lazy"/>
+                          {!vis&&<div className="absolute inset-0 bg-black/70 flex items-center justify-center text-white text-[10px] font-black tracking-widest">GİZLİ</div>}
+                          {isEditing&&<div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center"><span className="bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded">DÜZENLENİYOR</span></div>}
+                        </div>
+                        <h4 className="text-white font-bold text-xs mb-1 line-clamp-1">{p.name}</h4>
+                        <p className="text-[10px] text-slate-500 mb-2 line-clamp-2">{p.desc}</p>
+                        <div className="flex items-center gap-1 text-amber-400 font-bold text-sm mb-3"><Coins className="w-3.5 h-3.5"/>{Number(p.price)} FAP</div>
+                        <div className="grid grid-cols-3 gap-1.5 mt-auto">
+                          <button onClick={()=>toggleVisibility(p.id,vis)} className={`py-1.5 rounded-lg flex items-center justify-center border text-[10px] font-bold transition-colors ${vis?"bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700":"bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"}`} title={vis?"Gizle":"Yayınla"}>{vis?<EyeOff className="w-3.5 h-3.5"/>:<Eye className="w-3.5 h-3.5"/>}</button>
+                          <button onClick={()=>editProduct(p)} className={`py-1.5 rounded-lg flex items-center justify-center border text-[10px] font-bold transition-colors ${isEditing?"bg-amber-500 text-slate-950 border-amber-500":"bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500 hover:text-white"}`} title="Düzenle"><Edit className="w-3.5 h-3.5"/></button>
+                          <button onClick={()=>deleteProduct(p.id)} disabled={isEditing} className="py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-lg flex items-center justify-center border border-red-500/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Sil"><Trash className="w-3.5 h-3.5"/></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
       {/* Feedbacks */}
       {adminTab==="feedbacks"&&(
