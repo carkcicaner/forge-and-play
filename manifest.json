@@ -1,0 +1,59 @@
+{
+  "name": "Forge&Play — Dijital Oyun Platformu",
+  "short_name": "Forge&Play",
+  "description": "Türkiye'nin en kapsamlı dijital parti oyun platformu. Arkadaşlarınla oyna, kazan, eğlen.",
+  "start_url": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "background_color": "#020617",
+  "theme_color": "#f97316",
+  "orientation": "any",
+  "lang": "tr",
+  "dir": "ltr",
+  "categories": ["games", "entertainment"],
+  "scope": "/",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/HppdF5nY/freepik-minimal-futuristic-gaming-logo-forge-hammer-combin-64278.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://i.ibb.co/HppdF5nY/freepik-minimal-futuristic-gaming-logo-forge-hammer-combin-64278.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-wide.jpg",
+      "sizes": "1280x720",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Forge&Play Oyun Ekranı"
+    },
+    {
+      "src": "/screenshot-mobile.jpg",
+      "sizes": "390x844",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Forge&Play Mobil"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Oyunlar",
+      "url": "/?tab=store",
+      "description": "Tüm oyunlara göz at"
+    },
+    {
+      "name": "Ödül Mağazası",
+      "url": "/?tab=rewards",
+      "description": "FAP Coin ile ödül al"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}
