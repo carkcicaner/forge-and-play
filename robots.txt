@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://forgeandplay.com/sitemap.xml
+
+# Crawl delay (isteğe bağlı)
+Crawl-delay: 10
+
+# Admin paneli index'lenmesin
+Disallow: /?tab=admin
