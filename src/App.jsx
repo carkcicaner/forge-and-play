@@ -770,7 +770,6 @@ export default function App() {
   // Admin Store
   const saveProduct = async e => {
     e.preventDefault();
-    // Ref'ten al — stale closure'a karşı güvence
     const currentEditId = editingProductIdRef.current;
 
     if (!newProductData.name?.trim()||!newProductData.image?.trim()||!newProductData.desc?.trim()) {
@@ -795,25 +794,38 @@ export default function App() {
 
     try {
       if (currentEditId) {
-        // Güncelleme: updateDoc kullan — setDoc(merge) yerine daha güvenilir
-        await updateDoc(doc(db, "store_products", currentEditId), prod);
+        // setDoc ile güncelle — updateDoc'tan daha güvenilir,
+        // mevcut ürünün createdAt'ini koru
+        const existingProd = storeProducts.find(p => p.id === currentEditId);
+        await setDoc(doc(db, "store_products", currentEditId), {
+          ...prod,
+          createdAt: existingProd?.createdAt ?? serverTimestamp()
+        });
         alert(`"${prod.name}" başarıyla güncellendi!`);
       } else {
-        // Yeni ürün ekle
-        await addDoc(collection(db, "store_products"), { ...prod, createdAt: serverTimestamp() });
+        await addDoc(collection(db, "store_products"), {
+          ...prod,
+          createdAt: serverTimestamp()
+        });
         alert(`"${prod.name}" mağazaya eklendi!`);
       }
-      // Formu sıfırla
       setNewProductData({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
       setEditingProductId(null);
       editingProductIdRef.current = null;
     } catch(err) {
       handleFirebaseError(err);
+      const code = err?.code || err?.message || "bilinmiyor";
       alert(
-        "Kaydetme başarısız!\n" +
-        "Hata: " + (err?.code || err?.message || "bilinmiyor") + "\n\n" +
-        "Firestore Console → Rules → store_products için\n" +
-        "'allow update: if isAdmin()' kuralının aktif olduğunu kontrol edin."
+        `Kaydetme başarısız! Hata: ${code}\n\n` +
+        `⚠️ Firestore Console → Firestore Database → Rules sekmesine git.\n` +
+        `Aşağıdaki store_products kurallarının tam olarak bu şekilde olduğunu kontrol et:\n\n` +
+        `match /store_products/{productId} {\n` +
+        `  allow read: if true;\n` +
+        `  allow create: if isAdmin();\n` +
+        `  allow update: if isAdmin();\n` +
+        `  allow delete: if isAdmin();\n` +
+        `}\n\n` +
+        `Değiştirdikten sonra "Yayınla" butonuna bas ve tekrar dene.`
       );
     }
   };
@@ -842,8 +854,14 @@ export default function App() {
   };
   const toggleVisibility = async (id, vis) => {
     if (!id) { alert("Ürün ID bulunamadı."); return; }
-    try { await updateDoc(doc(db,"store_products",id),{isVisible:!vis}); }
-    catch(e){ handleFirebaseError(e); alert("Görünürlük değiştirilemedi: "+(e?.code||e?.message)); }
+    try {
+      const existing = storeProducts.find(p => p.id === id);
+      await setDoc(doc(db,"store_products",id), { ...existing, isVisible: !vis, id: undefined }, { merge: false });
+    } catch(e){
+      // setDoc başarısız olursa updateDoc dene
+      try { await updateDoc(doc(db,"store_products",id),{isVisible:!vis}); }
+      catch(e2){ handleFirebaseError(e2); alert("Görünürlük değiştirilemedi. Firestore kurallarını kontrol edin."); }
+    }
   };
   const deleteProduct = async id => {
     if (!id){alert("Ürün ID bulunamadı.");return;}
