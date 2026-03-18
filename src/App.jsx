@@ -852,29 +852,128 @@ export default function App() {
     editingProductIdRef.current = null;
     setNewProductData({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
   };
-  const toggleVisibility = async (id, vis) => {
-    if (!id) { alert("Ürün ID bulunamadı."); return; }
+  // ─── ÜRÜN CRUD ── Firestore REST API fallback ile en güvenilir versiyon ───────
+  const getAuthToken = async () => {
+    try { return await auth.currentUser?.getIdToken(true); } catch { return null; }
+  };
+
+  const firestoreREST = async (method, docPath, body) => {
+    const token = await getAuthToken();
+    if (!token) throw new Error("auth/not-authenticated");
+    const base = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
+    const url = `${base}/${docPath}`;
+    const res = await fetch(method === "DELETE" ? url : url, {
+      method,
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (!res.ok) { const err = await res.json(); throw new Error(err?.error?.message || res.statusText); }
+    return method === "DELETE" ? null : res.json();
+  };
+
+  const saveProduct = async e => {
+    e.preventDefault();
+    const currentEditId = editingProductIdRef.current;
+
+    if (!newProductData.name?.trim()||!newProductData.image?.trim()||!newProductData.desc?.trim()) { alert("Lütfen tüm alanları doldurun."); return; }
+    const price = Number(newProductData.price);
+    if (isNaN(price)||price<=0||price>100000) { alert("Geçerli fiyat girin (1-100.000)."); return; }
+    if (!newProductData.image.startsWith('http')) { alert("Görsel URL'i http:// ile başlamalıdır."); return; }
+
+    const prod = {
+      name: sanitizeText(newProductData.name).substring(0,150),
+      price,
+      image: newProductData.image.trim(),
+      desc: sanitizeText(newProductData.desc).substring(0,500),
+      type: ["Dijital","Fiziksel"].includes(newProductData.type)?newProductData.type:"Dijital",
+      isVisible: newProductData.isVisible !== false
+    };
+
     try {
-      const existing = storeProducts.find(p => p.id === id);
-      await setDoc(doc(db,"store_products",id), { ...existing, isVisible: !vis, id: undefined }, { merge: false });
-    } catch(e){
-      // setDoc başarısız olursa updateDoc dene
-      try { await updateDoc(doc(db,"store_products",id),{isVisible:!vis}); }
-      catch(e2){ handleFirebaseError(e2); alert("Görünürlük değiştirilemedi. Firestore kurallarını kontrol edin."); }
+      if (currentEditId) {
+        // Mevcut ürünün createdAt'ini koru
+        const existing = storeProducts.find(p=>p.id===currentEditId);
+        await setDoc(doc(db,"store_products",currentEditId), {
+          ...prod,
+          createdAt: existing?.createdAt ?? serverTimestamp()
+        });
+        alert(`"${prod.name}" güncellendi!`);
+      } else {
+        await addDoc(collection(db,"store_products"), { ...prod, createdAt: serverTimestamp() });
+        alert(`"${prod.name}" eklendi!`);
+      }
+      setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true});
+      setEditingProductId(null);
+      editingProductIdRef.current = null;
+    } catch(err) {
+      handleFirebaseError(err);
+      alert(
+        `❌ Hata: ${err?.code||err?.message}\n\n` +
+        `Firebase Console'da Rules güncellenmemiş.\n` +
+        `→ console.firebase.google.com\n` +
+        `→ Firestore Database → Rules\n` +
+        `→ İndirdiğiniz firestore.rules dosyasını yapıştırın ve Yayınla'ya basın.`
+      );
     }
   };
-  const deleteProduct = async id => {
-    if (!id){alert("Ürün ID bulunamadı.");return;}
-    if (!window.confirm("Bu ürünü kalıcı olarak silmek istiyorsunuz?")) return;
-    try { await deleteDoc(doc(db,"store_products",id)); }
-    catch(e){ handleFirebaseError(e); alert("Silinemedi: "+(e?.code||e?.message)); }
+
+  const editProduct = prod => {
+    if (!prod.id) { alert("Ürün ID'si bulunamadı."); return; }
+    setEditingProductId(prod.id);
+    editingProductIdRef.current = prod.id;
+    setNewProductData({ name:prod.name||'', price:String(prod.price||''), image:prod.image||'', desc:prod.desc||'', type:prod.type||'Dijital', isVisible:prod.isVisible!==false });
+    document.getElementById('product-form-section')?.scrollIntoView({behavior:'smooth',block:'start'});
   };
+
+  const cancelEdit = () => {
+    setEditingProductId(null);
+    editingProductIdRef.current = null;
+    setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true});
+  };
+
+  const toggleVisibility = async (id, vis) => {
+    if (!id) return;
+    try { await setDoc(doc(db,"store_products",id),{isVisible:!vis},{merge:true}); }
+    catch(e){ handleFirebaseError(e); alert("Firestore Rules güncellenmeli. Hata: "+(e?.code||e?.message)); }
+  };
+
+  const deleteProduct = async id => {
+    if (!id) { alert("ID bulunamadı."); return; }
+    if (!window.confirm("Bu ürünü silmek istediğinize emin misiniz?")) return;
+    try {
+      await deleteDoc(doc(db,"store_products",id));
+    } catch(e) {
+      handleFirebaseError(e);
+      // Firestore SDK başarısız olursa REST API'yi dene
+      try {
+        await firestoreREST("DELETE", `store_products/${id}`);
+        alert("Ürün silindi (REST API).");
+      } catch(e2) {
+        alert(
+          `❌ Silinemedi!\n\nFirebase Console'dan manuel olarak silin:\n` +
+          `console.firebase.google.com → Firestore Database\n` +
+          `→ store_products koleksiyonu → ID: ${id}\n` +
+          `Sonra Rules dosyasını güncelleyin.`
+        );
+      }
+    }
+  };
+
   const clearAllProducts = async () => {
-    if (!storeProducts.length){alert("Mağaza zaten boş.");return;}
-    if (!window.confirm(`${storeProducts.length} ürün silinecek. Emin misiniz?`)) return;
-    const errs=[];
-    for (const p of storeProducts) { if (!p.id) continue; try{await deleteDoc(doc(db,"store_products",p.id));}catch(e){errs.push(p.name+": "+(e?.code||e?.message));} }
-    if (errs.length) alert("Bazı ürünler silinemedi:\n"+errs.join("\n")); else alert("Tüm ürünler silindi.");
+    if (!storeProducts.length) { alert("Mağaza zaten boş."); return; }
+    if (!window.confirm(`⚠️ ${storeProducts.length} ürün silinecek. Geri alınamaz!`)) return;
+    let ok=0, fail=0;
+    for (const p of storeProducts) {
+      if (!p.id) continue;
+      try { await deleteDoc(doc(db,"store_products",p.id)); ok++; }
+      catch(e) {
+        // SDK başarısız → REST dene
+        try { await firestoreREST("DELETE",`store_products/${p.id}`); ok++; }
+        catch { fail++; }
+      }
+    }
+    if (fail===0) alert(`✓ ${ok} ürün silindi.`);
+    else alert(`${ok} silindi, ${fail} silinemedi.\n\nFails için Firebase Console'dan manuel silin:\nconsole.firebase.google.com → Firestore → store_products`);
   };
 
   // ============================================================================
