@@ -17,7 +17,7 @@ import {
 } from "firebase/auth";
 import {
   getFirestore, collection, onSnapshot, doc, setDoc, updateDoc,
-  addDoc, deleteDoc, query, orderBy, serverTimestamp, increment, writeBatch
+  addDoc, deleteDoc, query, orderBy, serverTimestamp, increment
 } from "firebase/firestore";
 
 /* =========================================================================
@@ -168,13 +168,7 @@ const LAB_PROJECTS = [
   },
 ];
 
-const DEFAULT_STORE_PRODUCTS = [
-  { name: "100 TL Steam Cüzdan Kodu", price: 350, image: "https://images.unsplash.com/photo-1614680376573-df3480f0c6ff?auto=format&fit=crop&q=80&w=800", desc: "Favori oyunlarını almak için 100 TL değerinde Steam cüzdan kodu.", type: "Dijital", isVisible: true },
-  { name: "1 Aylık Discord Nitro", price: 600, image: "https://images.unsplash.com/photo-1614680376408-140b95764d9c?auto=format&fit=crop&q=80&w=800", desc: "1 aylık Discord Nitro. Özel emojiler ve yüksek yayın kalitesi.", type: "Dijital", isVisible: true },
-  { name: "Forge&Play Tasarım Kupa", price: 450, image: "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?auto=format&fit=crop&q=80&w=800", desc: "Özel tasarım kupa. Sipariş aşamasında açık adres girmeniz gerekmektedir.", type: "Fiziksel", isVisible: true },
-  { name: "Profesyonel Oyuncu Faresi", price: 1500, image: "https://images.unsplash.com/photo-1527814050087-379381547962?auto=format&fit=crop&q=80&w=800", desc: "Yüksek hassasiyetli, RGB aydınlatmalı e-spor faresi.", type: "Fiziksel", isVisible: true },
-  { name: "Mekanik Oyuncu Klavyesi", price: 2500, image: "https://images.unsplash.com/photo-1595225476474-87563907a212?auto=format&fit=crop&q=80&w=800", desc: "RGB aydınlatmalı, tam boy profesyonel mekanik klavye.", type: "Fiziksel", isVisible: true }
-];
+// Varsayılan ürün yok — ürünler admin panelinden manuel olarak eklenir.
 
 const focusStyles = "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-500 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950";
 
@@ -782,20 +776,7 @@ export default function App() {
     };
   }, [isAdmin, handleFirebaseError]);
 
-  const loadDefaultProducts = async () => {
-    try {
-      const batch = writeBatch(db);
-      DEFAULT_STORE_PRODUCTS.forEach((product) => {
-        const docRef = doc(collection(db, "store_products"));
-        batch.set(docRef, { ...product, createdAt: serverTimestamp() });
-      });
-      await batch.commit();
-      alert("Varsayılan ürünler başarıyla yüklendi!");
-    } catch (err) {
-      handleFirebaseError(err);
-      alert("Ürünler yüklenirken bir hata oluştu.");
-    }
-  };
+  // Varsayılan ürün yükleme kaldırıldı — ürünler admin panelinden manuel eklenir.
 
   const handleSharePlatform = async () => {
     const shareData = {
@@ -1173,7 +1154,10 @@ export default function App() {
     }
   };
 
-  // DÜZELTİLDİ: Bot simülasyonu — bot interval temizleme düzeltildi
+  // DÜZELTİLDİ: Bot simülasyonu — admin'in kendi hesabı üzerinden çalışır.
+  // Firestore kuralları "sim_bot_999" gibi sahte UID'ye izin vermez.
+  // Bu yüzden bot; admin'in kendi playCount/fapCoin'ini artırır ve
+  // feedbackleri admin adına gönderir.
   const toggleBotSimulation = async () => {
     if (isBotRunning) {
       if (botIntervalRef.current) {
@@ -1185,69 +1169,65 @@ export default function App() {
       return;
     }
 
-    const botId = "sim_bot_999";
-    const botEmail = "bot@forgeandplay.com";
-
-    try {
-      await setDoc(doc(db, "users", botId), {
-        name: "Test Botu (Oto)",
-        email: botEmail,
-        role: "user",
-        fapCoin: 0,
-        playCount: 0,
-        paymentCode: "BOT-9999",
-        premiumEndDate: new Date("2099-01-01").toISOString(),
-        dailyFap: 0,
-        lastFapDate: "",
-        gamePlayCounts: {},
-        createdAt: serverTimestamp(),
-        lastLogin: serverTimestamp()
-      }, { merge: true });
-
-      setIsBotRunning(true);
-
-      botIntervalRef.current = setInterval(async () => {
-        try {
-          const randomGame = GAMES[Math.floor(Math.random() * GAMES.length)];
-
-          await updateDoc(doc(db, "users", botId), {
-            fapCoin: increment(0.5),
-            playCount: increment(1),
-            lastPlayedGameName: randomGame.title,
-            lastLogin: serverTimestamp(),
-            [`gamePlayCounts.${randomGame.id}`]: increment(1)
-          });
-
-          if (Math.random() < 0.2) {
-            const feedbackTexts = [
-              "Oyun çok eğlenceli!",
-              "Optimize edilebilir.",
-              "Bağlantı sorunu yaşadım.",
-              "Yeni özellik öneririm.",
-              "Harika deneyim!"
-            ];
-            await addDoc(collection(db, "feedbacks"), {
-              userId: botId,
-              user: "Test Botu (Oto)",
-              email: botEmail,
-              game: randomGame.title,
-              text: `[BOT TEST] ${feedbackTexts[Math.floor(Math.random() * feedbackTexts.length)]}`,
-              status: "beklemede",
-              createdAt: serverTimestamp(),
-              date: new Date().toLocaleDateString('tr-TR'),
-              isBotTest: true
-            });
-          }
-        } catch (e) {
-          handleFirebaseError(e);
-        }
-      }, 8000);
-
-      alert("Bot başlatıldı! Arka planda test verileri üretecek.");
-    } catch (err) {
-      handleFirebaseError(err);
-      alert("Bot başlatılamadı.");
+    if (!currentUser) {
+      alert("Bot başlatmak için giriş yapmalısınız.");
+      return;
     }
+
+    setIsBotRunning(true);
+    alert("Bot başlatıldı! Admin hesabı üzerinden test verileri üretiliyor.");
+
+    botIntervalRef.current = setInterval(async () => {
+      try {
+        const randomGame = GAMES[Math.floor(Math.random() * GAMES.length)];
+
+        // Admin'in kendi user dokümanını güncelle (kurallar geçer)
+        await updateDoc(doc(db, "users", currentUser.id), {
+          fapCoin: increment(0.5),
+          playCount: increment(1),
+          lastPlayedGameName: randomGame.title,
+          lastLogin: serverTimestamp(),
+          [`gamePlayCounts.${randomGame.id}`]: increment(1)
+        }).catch(handleFirebaseError);
+
+        // Admin adına feedback gönder (kurallar geçer: userId == auth.uid)
+        if (Math.random() < 0.2) {
+          const feedbackTexts = [
+            "[BOT TEST] Oyun çok eğlenceli!",
+            "[BOT TEST] Biraz optimize edilebilir.",
+            "[BOT TEST] Bağlantı sorunu yaşadım.",
+            "[BOT TEST] Yeni özellik öneririm.",
+            "[BOT TEST] Harika bir deneyim!"
+          ];
+          await addDoc(collection(db, "feedbacks"), {
+            userId: currentUser.id,
+            user: `[BOT] ${currentUser.name || "Admin"}`,
+            email: String(currentUser.email),
+            game: randomGame.title,
+            text: feedbackTexts[Math.floor(Math.random() * feedbackTexts.length)],
+            status: "beklemede",
+            createdAt: serverTimestamp(),
+            date: new Date().toLocaleDateString('tr-TR'),
+            isBotTest: true
+          }).catch(handleFirebaseError);
+        }
+
+        // Local state'i de güncelle
+        setCurrentUser(prev => prev ? ({
+          ...prev,
+          fapCoin: (Number(prev.fapCoin) || 0) + 0.5,
+          playCount: (Number(prev.playCount) || 0) + 1,
+          lastPlayedGameName: randomGame.title,
+          gamePlayCounts: {
+            ...(prev.gamePlayCounts || {}),
+            [randomGame.id]: (Number((prev.gamePlayCounts || {})[randomGame.id]) || 0) + 1
+          }
+        }) : null);
+
+      } catch (e) {
+        handleFirebaseError(e);
+      }
+    }, 8000);
   };
 
   // =========================================================================
@@ -2745,9 +2725,7 @@ export default function App() {
                   {editingProductId && (
                     <button type="button" onClick={() => { setEditingProductId(null); setNewProductData({ name: '', price: '', image: '', desc: '', type: 'Dijital', isVisible: true }); }} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">İptal</button>
                   )}
-                  {!editingProductId && storeProducts.length === 0 && (
-                    <button type="button" onClick={loadDefaultProducts} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 font-bold rounded-xl">Varsayılanları Yükle</button>
-                  )}
+
                 </div>
               </form>
             </div>
@@ -2810,9 +2788,10 @@ export default function App() {
               <h4 className="text-white font-bold mb-2 flex items-center gap-2 text-sm"><Info className="w-4 h-4 text-amber-500" /> Bot Hakkında</h4>
               <ul className="text-xs text-slate-400 space-y-1 list-disc list-inside">
                 <li>Her 8 saniyede bir işlem yapar</li>
-                <li>Her işlemde 0.5 FAP Coin kazanır</li>
-                <li>%20 ihtimalle feedback gönderir</li>
-                <li>Bot mesajları [BOT TEST] etiketiyle işaretlenir</li>
+                <li>Her işlemde admin hesabına 0.5 FAP Coin ekler</li>
+                <li>%20 ihtimalle admin adına [BOT TEST] feedback gönderir</li>
+                <li>Firestore kurallarıyla uyumlu: admin'in kendi hesabı üzerinden çalışır</li>
+                <li>Durdurunca istatistikler olduğu yerde kalır (test verisi)</li>
               </ul>
             </div>
           </div>
