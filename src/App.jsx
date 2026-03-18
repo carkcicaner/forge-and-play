@@ -717,11 +717,19 @@ export default function App() {
 
     setStoreLoading(true);
     const unsubscribeProducts = onSnapshot(
-      query(collection(db, "store_products"), orderBy("createdAt", "desc")),
+      collection(db, "store_products"),
       (snapshot) => {
-        setStoreProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        const products = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Client-side sıralama: createdAt desc (en yeni üste) — index gerektirmez
+        products.sort((a, b) => {
+          const aTime = a.createdAt?.seconds ?? a.createdAt?.toMillis?.() / 1000 ?? 0;
+          const bTime = b.createdAt?.seconds ?? b.createdAt?.toMillis?.() / 1000 ?? 0;
+          return bTime - aTime;
+        });
+        setStoreProducts(products);
         setStoreLoading(false);
-      }, (err) => {
+      },
+      (err) => {
         handleFirebaseError(err);
         setStoreLoading(false);
       }
@@ -1951,7 +1959,8 @@ export default function App() {
               <Gift className="w-8 h-8 md:w-12 md:h-12 text-amber-500" /> Ödül Mağazası
             </h1>
             <p className="text-sm md:text-base text-slate-300 leading-relaxed max-w-2xl mb-6">
-              Oynadıkça kazan! Premium üyeler her <b className="text-amber-400">10 dakikada 0.5 FAP Coin</b> kazanır (Günde maks 8 FAP).
+              Oynadıkça kazan! Premium üyeler her <b className="text-amber-400">10 dakikada 0.5 FAP Coin</b> kazanır.<br />
+              <span className="text-xs text-slate-400">Günde maks <b className="text-amber-300">16 FAP</b> — ilk 12 saatte 8, son 12 saatte 8 coin (32 oyun oturumu).</span>
             </p>
             {!currentUser ? (
               <button onClick={() => setShowLoginModal(true)} className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition-colors">
@@ -2578,14 +2587,13 @@ export default function App() {
         alert("Geçerli bir fiyat girin (1 ile 100.000 arasında).");
         return;
       }
-      // Görsel URL kontrolü — http/https ile başlamıyorsa da kabul et (CDN vb.)
       const imgUrl = String(newProductData.image).trim();
       if (!imgUrl.startsWith('http')) {
         alert("Görsel URL'i http:// veya https:// ile başlamalıdır.");
         return;
       }
 
-      const productToSave = {
+      const productBase = {
         name: sanitizeText(newProductData.name).substring(0, 150),
         price: price,
         image: imgUrl,
@@ -2596,27 +2604,31 @@ export default function App() {
 
       try {
         if (editingProductId) {
-          // Update: mevcut dokümanı güncelle, createdAt'e dokunma
-          await updateDoc(doc(db, "store_products", editingProductId), productToSave);
-          alert(`"${productToSave.name}" başarıyla güncellendi!`);
+          // setDoc merge:true — updateDoc'tan daha güvenilir,
+          // doküman eksik alanları silmez, index gerekmez
+          await setDoc(
+            doc(db, "store_products", editingProductId),
+            productBase,
+            { merge: true }
+          );
+          alert(`"${productBase.name}" başarıyla güncellendi!`);
         } else {
-          // Create: createdAt ekle, en üste çıksın (desc sıralama ile)
           await addDoc(collection(db, "store_products"), {
-            ...productToSave,
+            ...productBase,
             createdAt: serverTimestamp()
           });
-          alert(`"${productToSave.name}" mağazaya eklendi!`);
+          alert(`"${productBase.name}" mağazaya eklendi!`);
         }
-        // Formu sıfırla
         setNewProductData({ name: '', price: '', image: '', desc: '', type: 'Dijital', isVisible: true });
         setEditingProductId(null);
       } catch (err) {
         handleFirebaseError(err);
-        console.error("Ürün kayıt hatası:", err?.code, err?.message);
         alert(
-          "Ürün kaydedilirken hata oluştu.\n" +
-          "Firestore rules 'isAdmin()' kontrolünü geçtiğinizden emin olun.\n" +
-          "Hata: " + (err?.code || err?.message || "Bilinmiyor")
+          "Ürün kaydedilemedi!\n" +
+          "Hata kodu: " + (err?.code || "bilinmiyor") + "\n" +
+          "Detay: " + (err?.message || "bilinmiyor") + "\n\n" +
+          "Firestore Console → Rules sekmesinde 'isAdmin()' fonksiyonunun\n" +
+          "e-posta adresinizi içerdiğinden emin olun."
         );
       }
     };
@@ -2643,42 +2655,39 @@ export default function App() {
       );
       if (!confirmed) return;
       try {
-        // Batch ile hepsini sil
-        const { writeBatch } = await import("firebase/firestore");
-        const batch = writeBatch(db);
-        storeProducts.forEach(prod => batch.delete(doc(db, "store_products", prod.id)));
-        await batch.commit();
-        alert("Tüm ürünler silindi. Artık admin panelinden yeni ürünler ekleyebilirsiniz.");
+        // Tüm ürünleri sırayla sil
+        for (const prod of storeProducts) {
+          if (prod.id) await deleteDoc(doc(db, "store_products", prod.id));
+        }
+        alert("Tüm ürünler başarıyla silindi.");
       } catch (err) {
         handleFirebaseError(err);
-        // Batch import çalışmazsa tek tek sil
-        try {
-          for (const prod of storeProducts) {
-            await deleteDoc(doc(db, "store_products", prod.id));
-          }
-          alert("Tüm ürünler silindi.");
-        } catch (e2) {
-          handleFirebaseError(e2);
-          alert("Silme işlemi sırasında hata oluştu.");
-        }
+        alert("Silme sırasında hata: " + (err?.code || err?.message));
       }
     };
 
     const toggleProductVisibility = async (id, currentVisibility) => {
+      if (!id) { alert("Ürün ID bulunamadı."); return; }
       try {
-        await updateDoc(doc(db, "store_products", id), { isVisible: !currentVisibility });
+        await setDoc(
+          doc(db, "store_products", id),
+          { isVisible: !currentVisibility },
+          { merge: true }
+        );
       } catch (err) {
         handleFirebaseError(err);
+        alert("Görünürlük değiştirilemedi. Hata: " + (err?.code || err?.message));
       }
     };
 
     const handleDeleteProduct = async (id) => {
+      if (!id) { alert("Ürün ID bulunamadı, silme yapılamadı."); return; }
       if (window.confirm("Bu ürünü kalıcı olarak silmek istediğinize emin misiniz?")) {
         try {
           await deleteDoc(doc(db, "store_products", id));
         } catch (err) {
           handleFirebaseError(err);
-          alert("Ürün silinirken hata oluştu.");
+          alert("Ürün silinemedi. Hata: " + (err?.code || err?.message));
         }
       }
     };
