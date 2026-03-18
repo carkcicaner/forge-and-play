@@ -2561,6 +2561,25 @@ export default function App() {
       }).catch(handleFirebaseError);
     };
 
+    // Kullanıcı Firestore kaydını sil (Auth kaydı client-side silinemez, sadece DB kaydı)
+    const handleDeleteUser = async (user) => {
+      if (user.role === "admin" || ADMIN_EMAILS.includes(String(user.email).toLowerCase().trim())) {
+        alert("Admin hesabı silinemez!");
+        return;
+      }
+      const confirmed = window.confirm(
+        `⚠️ KULLANICI SİL\n\n"${user.name || user.email}" adlı kullanıcının tüm verileri Firestore'dan silinecek.\n\nNot: Firebase Auth kaydı ayrıca Console'dan silinmelidir.\n\nDevam etmek istiyor musunuz?`
+      );
+      if (!confirmed) return;
+      try {
+        await deleteDoc(doc(db, "users", user.id));
+        alert(`"${user.name || user.email}" başarıyla silindi.`);
+      } catch (err) {
+        handleFirebaseError(err);
+        alert("Kullanıcı silinemedi.\nHata: " + (err?.code || err?.message));
+      }
+    };
+
     const handleOrderStatus = async (orderId, newStatus, userId, fapCost) => {
       try {
         await updateDoc(doc(db, "orders", orderId), { status: newStatus });
@@ -2650,19 +2669,37 @@ export default function App() {
     // Tüm mağaza ürünlerini tek seferde sil
     const handleClearAllProducts = async () => {
       if (storeProducts.length === 0) { alert("Mağazada zaten ürün yok."); return; }
+
       const confirmed = window.confirm(
-        `⚠️ DİKKAT!\n\nMağazadaki ${storeProducts.length} ürünün TAMAMI silinecek.\nBu işlem geri alınamaz!\n\nDevam etmek istiyor musunuz?`
+        `⚠️ DİKKAT!\n\n${storeProducts.length} ürün silinecek.\nBu işlem geri alınamaz!\n\nOnaylıyor musunuz?`
       );
       if (!confirmed) return;
-      try {
-        // Tüm ürünleri sırayla sil
-        for (const prod of storeProducts) {
-          if (prod.id) await deleteDoc(doc(db, "store_products", prod.id));
+
+      const results = { ok: 0, fail: 0, errors: [] };
+
+      // Her ürünü ayrı ayrı sil, hata olsa bile devam et
+      for (const prod of storeProducts) {
+        if (!prod.id) { results.fail++; results.errors.push("ID yok: " + prod.name); continue; }
+        try {
+          await deleteDoc(doc(db, "store_products", prod.id));
+          results.ok++;
+        } catch (err) {
+          results.fail++;
+          results.errors.push(`${prod.name}: ${err?.code || err?.message}`);
+          console.error("Ürün silinemedi:", prod.id, err);
         }
-        alert("Tüm ürünler başarıyla silindi.");
-      } catch (err) {
-        handleFirebaseError(err);
-        alert("Silme sırasında hata: " + (err?.code || err?.message));
+      }
+
+      if (results.fail === 0) {
+        alert(`✓ ${results.ok} ürün başarıyla silindi.`);
+      } else {
+        alert(
+          `${results.ok} ürün silindi, ${results.fail} ürün silinemedi.\n\n` +
+          `Silme hataları:\n${results.errors.join("\n")}\n\n` +
+          `Firestore Console → Rules sekmesinde\n` +
+          `"allow write: if isAdmin()" kuralının aktif olduğundan emin olun.\n` +
+          `Sonra sayfayı yenileyip tekrar deneyin.`
+        );
       }
     };
 
@@ -2777,6 +2814,16 @@ export default function App() {
                                 <button onClick={() => approvePremiumTime(user.id, "1A")} className="text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors">+1A</button>
                                 <button onClick={() => approvePremiumTime(user.id, "6A")} className="text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-orange-900/50 hover:bg-orange-800/50 text-orange-300 transition-colors">+6A</button>
                                 <button onClick={() => approvePremiumTime(user.id, "1Y")} className="text-[10px] md:text-xs font-bold px-2 md:px-3 py-1.5 rounded-lg bg-amber-900/50 hover:bg-amber-800/50 text-amber-300 transition-colors">+1Y</button>
+                                {/* Kullanıcı sil — admin silinemez */}
+                                {user.role !== "admin" && !ADMIN_EMAILS.includes(String(user.email).toLowerCase().trim()) && (
+                                  <button
+                                    onClick={() => handleDeleteUser(user)}
+                                    className="text-[10px] md:text-xs font-bold px-2 py-1.5 rounded-lg bg-red-900/40 hover:bg-red-600 text-red-300 hover:text-white transition-colors border border-red-800/40"
+                                    title="Kullanıcıyı Sil"
+                                  >
+                                    <Trash className="w-3 h-3 md:w-4 md:h-4" />
+                                  </button>
+                                )}
                               </>
                             )}
                           </div>
