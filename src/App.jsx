@@ -71,7 +71,8 @@ import {
   query,
   orderBy,
   serverTimestamp,
-  increment
+  increment,
+  writeBatch
 } from "firebase/firestore";
 
 /* =========================================================================
@@ -773,6 +774,25 @@ export default function App() {
     };
   }, [isAdmin, handleFirebaseError]);
 
+  // Varsayılan ürünleri yükleme fonksiyonu
+  const loadDefaultProducts = async () => {
+    try {
+      const batch = writeBatch(db);
+      DEFAULT_STORE_PRODUCTS.forEach((product) => {
+        const docRef = doc(collection(db, "store_products"));
+        batch.set(docRef, {
+          ...product,
+          createdAt: serverTimestamp()
+        });
+      });
+      await batch.commit();
+      alert("Varsayılan ürünler başarıyla yüklendi!");
+    } catch (err) {
+      console.error("Varsayılan ürün yükleme hatası:", err);
+      alert("Ürünler yüklenirken bir hata oluştu.");
+    }
+  };
+
   const handleSharePlatform = async () => {
     const shareData = {
       title: 'Forge&Play Eğlence Platformu',
@@ -1023,8 +1043,10 @@ export default function App() {
         createdAt: serverTimestamp(),
         date: new Date().toLocaleDateString('tr-TR')
       }).catch(handleFirebaseError);
+      alert("Geri bildiriminiz başarıyla gönderildi! Teşekkürler.");
     } catch (error) {
-      throw error;
+      console.error("Feedback gönderme hatası:", error);
+      alert("Geri bildirim gönderilirken bir hata oluştu.");
     } finally {
       setIsSubmittingFeedback(false);
     }
@@ -1073,6 +1095,120 @@ export default function App() {
     }
   };
 
+  // Bot Simülasyonu Başlat/Durdur
+  const toggleBotSimulation = async () => {
+    if (isBotRunning) {
+      // Botu durdur
+      if (botIntervalRef.current) {
+        clearInterval(botIntervalRef.current);
+        botIntervalRef.current = null;
+      }
+      setIsBotRunning(false);
+      alert("Simülasyon Botu başarıyla durduruldu.");
+    } else {
+      // Botu başlat
+      const botId = "sim_bot_999";
+      const botEmail = "bot@forgeandplay.com";
+      
+      try {
+        // Bot kullanıcısını oluştur veya güncelle
+        await setDoc(doc(db, "users", botId), {
+          name: "Test Botu (Oto)",
+          email: botEmail,
+          role: "user",
+          fapCoin: 0,
+          playCount: 0,
+          paymentCode: "BOT-9999",
+          premiumEndDate: new Date("2099-01-01").toISOString(), // Bot premium olsun
+          dailyFap: 0,
+          lastFapDate: "",
+          gamePlayCounts: {},
+          createdAt: serverTimestamp(),
+          lastLogin: serverTimestamp()
+        }, { merge: true });
+
+        setIsBotRunning(true);
+        alert("Bot başlatıldı! Arka planda oyunları gezecek, coin kazanacak ve hata raporları atacaktır.");
+
+        // Bot simülasyon intervali
+        botIntervalRef.current = setInterval(async () => {
+          try {
+            const randomGame = GAMES[Math.floor(Math.random() * GAMES.length)];
+            
+            // Bot oyun oynuyor (oyun sayısını artır)
+            await updateDoc(doc(db, "users", botId), {
+              fapCoin: increment(0.5),
+              playCount: increment(1),
+              lastPlayedGameName: randomGame.title,
+              lastLogin: serverTimestamp(),
+              [`gamePlayCounts.${randomGame.id}`]: increment(1)
+            });
+
+            // Rastgele feedback gönder (20% ihtimalle)
+            if (Math.random() < 0.2) {
+              const feedbackTypes = [
+                "Oyun çok eğlenceli!",
+                "Biraz daha optimize edilebilir.",
+                "Bağlantı sorunu yaşadım.",
+                "Yeni özellik eklenebilir.",
+                "Harika bir deneyim!",
+                "Takıldım, yardım eder misiniz?",
+                "Grafikler süper olmuş."
+              ];
+              
+              await addDoc(collection(db, "feedbacks"), {
+                userId: botId,
+                user: "Test Botu (Oto)",
+                email: botEmail,
+                game: randomGame.title,
+                text: `[BOT TEST] ${feedbackTypes[Math.floor(Math.random() * feedbackTypes.length)]} (Oyun: ${randomGame.title})`,
+                status: "beklemede",
+                createdAt: serverTimestamp(),
+                date: new Date().toLocaleDateString('tr-TR'),
+                isBotTest: true
+              });
+              
+              console.log("Bot feedback gönderdi:", randomGame.title);
+            }
+            
+            // Rastgele hata raporu (10% ihtimalle)
+            if (Math.random() < 0.1) {
+              const errors = [
+                "Sayfa yüklenmedi",
+                "Buton çalışmıyor",
+                "Gecikme yaşandı",
+                "Ekran dondu",
+                "Ses gelmedi"
+              ];
+              
+              await addDoc(collection(db, "feedbacks"), {
+                userId: botId,
+                user: "Test Botu (Oto)",
+                email: botEmail,
+                game: randomGame.title,
+                text: `[BOT HATA RAPORU] ${errors[Math.floor(Math.random() * errors.length)]} - ${new Date().toLocaleTimeString()}`,
+                status: "beklemede",
+                createdAt: serverTimestamp(),
+                date: new Date().toLocaleDateString('tr-TR'),
+                isBotTest: true,
+                isError: true
+              });
+              
+              console.log("Bot hata raporu gönderdi:", randomGame.title);
+            }
+            
+          } catch(e) {
+            console.error("Bot işlem yapamadı:", e);
+          }
+        }, 8000); // Her 8 saniyede bir işlem yap
+
+      } catch (err) {
+        console.error(err);
+        alert("Bot başlatılamadı, veritabanı izinlerinizi kontrol edin.");
+      }
+    }
+  };
+
   // --- RENDER FONKSİYONLARI ---
 
   const renderNavbar = () => (
@@ -1093,6 +1229,7 @@ export default function App() {
               { id: "rewards", icon: Gift, label: "Ödül Mağazası" },
               { id: "library", icon: Library, label: "Kütüphanem" },
               { id: "lab", icon: FlaskConical, label: "Laboratuvar" },
+              { id: "feedback", icon: MessageSquarePlus, label: "Fikir Kutusu" }
             ].map((tab) => {
               const TabIcon = tab.icon;
               return (
@@ -1632,6 +1769,94 @@ export default function App() {
           <button onClick={() => setShowInstallGuide(false)} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-colors">
             Anladım, Teşekkürler
           </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Fikir Kutusu (Feedback) Sayfası
+  const renderFeedback = () => {
+    if (!currentUser) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 text-center animate-in fade-in">
+          <MessageSquarePlus className="w-20 h-20 text-slate-700 mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Fikir Kutusu</h2>
+          <p className="text-slate-400 max-w-md mb-8">Fikirlerinizi paylaşmak için giriş yapmalısınız.</p>
+          <button onClick={() => setShowLoginModal(true)} className="px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-colors">
+            Giriş Yap
+          </button>
+        </div>
+      );
+    }
+
+    const userFeedbacks = feedbacks.filter(fb => fb.userId === currentUser.id);
+    
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
+        <div className="bg-gradient-to-r from-orange-900/30 to-slate-900 border border-orange-500/30 rounded-3xl p-8 text-center relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent pointer-events-none"></div>
+          <Lightbulb className="w-16 h-16 text-orange-500 mx-auto mb-4" />
+          <h2 className="text-3xl md:text-4xl font-black text-white mb-2">Fikir Kutusu</h2>
+          <p className="text-slate-400 max-w-2xl mx-auto mb-6">
+            Oyunlarımız hakkındaki düşüncelerinizi, karşılaştığınız sorunları veya yeni önerilerinizi paylaşın. 
+            Her fikir bizim için değerlidir!
+          </p>
+          <div className="inline-flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2">
+            <MessageCircle className="w-4 h-4 text-orange-500" />
+            <span className="text-sm text-slate-300">Toplam {userFeedbacks.length} fikir paylaştınız</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              <MessageSquarePlus className="w-5 h-5 text-orange-500" /> Yeni Fikir Gönder
+            </h3>
+            <FeedbackForm currentUser={currentUser} onSubmit={handleFeedbackSubmit} />
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-orange-500" /> Gönderdiğiniz Fikirler
+            </h3>
+            
+            {userFeedbacks.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                <Lightbulb className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p>Henüz hiç fikir göndermediniz.</p>
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                {userFeedbacks.map((fb, idx) => (
+                  <div key={fb.id || idx} className="bg-slate-950 border border-slate-800 rounded-xl p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-xs font-bold px-2 py-1 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                        {fb.game || "Genel"}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {fb.createdAt ? new Date(fb.createdAt).toLocaleDateString('tr-TR') : fb.date}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-300 mb-3">{String(fb.text)}</p>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded ${
+                        fb.status === "onaylandi" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                        fb.status === "reddedildi" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
+                        "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                      }`}>
+                        {fb.status === "onaylandi" ? "Onaylandı ✓" : fb.status === "reddedildi" ? "Reddedildi ✗" : "Beklemede"}
+                      </span>
+                      {fb.isBotTest && (
+                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                          BOT TEST
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -2215,21 +2440,33 @@ export default function App() {
     const handleAddProduct = async (e) => {
       e.preventDefault();
       try {
+        // Zorunlu alanları kontrol et
+        if (!newProductData.name || !newProductData.price || !newProductData.image || !newProductData.desc) {
+          alert("Lütfen tüm alanları doldurun!");
+          return;
+        }
+
+        const productToSave = {
+          name: String(newProductData.name).trim(),
+          price: Number(newProductData.price),
+          image: String(newProductData.image).trim(),
+          desc: String(newProductData.desc).trim(),
+          type: newProductData.type,
+          isVisible: newProductData.isVisible !== false
+        };
+
         if (editingProductId) {
-          await updateDoc(doc(db, "store_products", editingProductId), {
-            ...newProductData,
-            price: Number(newProductData.price)
-          });
+          await updateDoc(doc(db, "store_products", editingProductId), productToSave);
           alert("Ürün başarıyla güncellendi!");
         } else {
           await addDoc(collection(db, "store_products"), {
-            ...newProductData,
-            price: Number(newProductData.price),
-            isVisible: true,
+            ...productToSave,
             createdAt: serverTimestamp()
           });
           alert("Yeni ürün başarıyla mağazaya eklendi!");
         }
+        
+        // Formu temizle
         setNewProductData({ name: '', price: '', image: '', desc: '', type: 'Dijital', isVisible: true });
         setEditingProductId(null);
       } catch(err) {
@@ -2258,6 +2495,7 @@ export default function App() {
         });
       } catch(err) {
         console.error("Görünürlük değiştirme hatası", err);
+        alert("Görünürlük değiştirilemedi!");
       }
     };
     
@@ -2265,64 +2503,10 @@ export default function App() {
       if(window.confirm("Bu ürünü mağazadan kalıcı olarak silmek istediğinize emin misiniz?")) {
         try {
           await deleteDoc(doc(db, "store_products", id));
+          alert("Ürün başarıyla silindi!");
         } catch (err) {
           console.error("Silme hatası", err);
-        }
-      }
-    };
-
-    const toggleBotSimulation = async () => {
-      if (isBotRunning) {
-        clearInterval(botIntervalRef.current);
-        setIsBotRunning(false);
-        alert("Simülasyon Botu başarıyla durduruldu.");
-      } else {
-        const botId = "sim_bot_999";
-        try {
-          await setDoc(doc(db, "users", botId), {
-            name: "Test Botu (Oto)",
-            email: "bot@forgeandplay.com",
-            role: "user",
-            fapCoin: 0,
-            playCount: 0,
-            paymentCode: "BOT-9999",
-            createdAt: serverTimestamp(),
-            lastLogin: serverTimestamp()
-          }, { merge: true });
-
-          setIsBotRunning(true);
-          alert("Bot başlatıldı! Arka planda oyunları gezecek, coin kazanacak ve hata raporları atacaktır.");
-
-          botIntervalRef.current = setInterval(async () => {
-            try {
-              const randomGame = GAMES[Math.floor(Math.random() * GAMES.length)];
-              await updateDoc(doc(db, "users", botId), {
-                 fapCoin: increment(0.5),
-                 playCount: increment(1),
-                 lastPlayedGameName: randomGame.title,
-                 lastLogin: serverTimestamp()
-              });
-
-              if (Math.random() < 0.2) {
-                 await addDoc(collection(db, "feedbacks"), {
-                    userId: botId,
-                    user: "Test Botu (Oto)",
-                    email: "bot@forgeandplay.com",
-                    game: randomGame.title,
-                    text: "Sistem Testi: Bot oyun sırasında bir hata yakaladı veya otomatik geri bildirim gönderdi! (Test Mesajı)",
-                    status: "beklemede",
-                    createdAt: serverTimestamp(),
-                    date: new Date().toLocaleDateString('tr-TR')
-                 });
-              }
-            } catch(e) {
-              console.error("Bot işlem yapamadı:", e);
-            }
-          }, 5000); 
-
-        } catch (err) {
-          console.error(err);
-          alert("Bot başlatılamadı, veritabanı izinlerinizi kontrol edin.");
+          alert("Ürün silinirken bir hata oluştu!");
         }
       }
     };
@@ -2471,7 +2655,7 @@ export default function App() {
                 <textarea required placeholder="Ürün Açıklaması..." value={newProductData.desc} onChange={e => setNewProductData({...newProductData, desc: e.target.value})} className="col-span-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-amber-500 outline-none min-h-[100px]" />
                 
                 <div className="col-span-full flex flex-col sm:flex-row gap-3">
-                   <button type="submit" className={`flex-1 py-3 ${editingProductId ? "bg-amber-600 hover:bg-amber-500" : "bg-emerald-600 hover:bg-emerald-500"} text-slate-950 font-bold rounded-xl transition-colors`}>
+                   <button type="submit" className={`flex-1 py-3 ${editingProductId ? "bg-amber-600 hover:bg-amber-500" : "bg-emerald-600 hover:bg-emerald-500"} text-white font-bold rounded-xl transition-colors`}>
                      {editingProductId ? "Değişiklikleri Kaydet" : "Ürünü Mağazaya Ekle"}
                    </button>
                    {editingProductId && (
@@ -2546,6 +2730,20 @@ export default function App() {
                  </button>
                  {isBotRunning && <p className="text-[10px] text-emerald-400 mt-2 text-center animate-pulse">Bot şu an aktif. (Kullanıcılar ve Fikir Kutusu sekmesinden izleyebilirsiniz)</p>}
                </div>
+            </div>
+
+            <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+              <h4 className="text-white font-bold mb-2 flex items-center gap-2 text-sm">
+                <Info className="w-4 h-4 text-amber-500" /> Bot Simülasyonu Hakkında
+              </h4>
+              <ul className="text-xs text-slate-400 space-y-1 list-disc list-inside">
+                <li>Bot her 8 saniyede bir işlem yapar</li>
+                <li>Her işlemde 0.5 FAP Coin kazanır</li>
+                <li>%20 ihtimalle rastgele feedback gönderir</li>
+                <li>%10 ihtimalle hata raporu gönderir</li>
+                <li>Bot test mesajları "[BOT TEST]" etiketiyle işaretlenir</li>
+                <li>Fikir Kutusu'ndan botun gönderdiği mesajları görebilirsiniz</li>
+              </ul>
             </div>
           </div>
         )}
