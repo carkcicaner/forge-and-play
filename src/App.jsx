@@ -375,17 +375,131 @@ export default function App() {
   const handleRewardPurchase=async e=>{e.preventDefault();if(!currentUser||!selectedProduct)return;const balance=Number(currentUser.fapCoin||0);const cost=Number(selectedProduct.price||0);if(balance<cost){alert(`Yetersiz FAP Coin!\nBakiye: ${balance.toFixed(1)}\nGerekli: ${cost}`);return;}if(selectedProduct.type==="Fiziksel"&&!orderAddress.trim()){alert("Adres zorunludur.");return;}setIsOrdering(true);try{const newBal=balance-cost;await updateDoc(doc(db,"users",currentUser.id),{fapCoin:newBal}).catch(handleFirebaseError);await addDoc(collection(db,"orders"),{userId:currentUser.id,userEmail:String(currentUser.email),userName:sanitizeText(currentUser.name||"İsimsiz"),productId:selectedProduct.id,productName:sanitizeText(selectedProduct.name),productType:selectedProduct.type,fapCost:cost,addressDetails:sanitizeText(orderAddress||"Dijital"),status:"Onay Bekliyor",createdAt:serverTimestamp()}).catch(handleFirebaseError);setCurrentUser(prev=>prev?{...prev,fapCoin:newBal}:null);alert("Siparişiniz alındı!");setSelectedProduct(null);setOrderAddress("");}catch(err){handleFirebaseError(err);alert("Sipariş oluşturulamadı.");}finally{setIsOrdering(false);}};
 
   // ── CRUD (REST API + SDK fallback) ─────────────────────────────────────────────
-  const callFAPI=async(method,path,body=null)=>{const token=await auth.currentUser?.getIdToken(true).catch(()=>null);const url=`https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${path}`;const res=await fetch(url,{method,headers:{"Content-Type":"application/json",...(token?{"Authorization":`Bearer ${token}`}:{})},body:body?JSON.stringify(body):undefined});if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||`HTTP ${res.status}`);}return method==="DELETE"?true:res.json();};
-  const toFV=v=>{if(v===null||v===undefined)return{nullValue:null};if(typeof v==="boolean")return{booleanValue:v};if(typeof v==="number")return Number.isInteger(v)?{integerValue:String(v)}:{doubleValue:v};if(typeof v==="string")return{stringValue:v};if(v&&typeof v==="object"&&v.seconds)return{timestampValue:new Date(v.seconds*1000).toISOString()};return{stringValue:String(v)};};
-  const toFF=obj=>{const f={};for(const[k,v]of Object.entries(obj)){if(v!==undefined)f[k]=toFV(v);}return{fields:f};};
+  // ─── ÜRÜN CRUD — Saf Firebase SDK (ChatGPT yöntemi: Promise.all) ──────────────
 
-  const saveProduct=async e=>{e.preventDefault();const cid=editingProductIdRef.current;if(!newProductData.name?.trim()||!newProductData.image?.trim()||!newProductData.desc?.trim()){alert("Tüm alanları doldurun.");return;}const price=Number(newProductData.price);if(isNaN(price)||price<=0||price>100000){alert("Geçerli fiyat girin.");return;}if(!newProductData.image.startsWith('http')){alert("URL http ile başlamalı.");return;}const prod={name:sanitizeText(newProductData.name).substring(0,150),price,image:newProductData.image.trim(),desc:sanitizeText(newProductData.desc).substring(0,500),type:["Dijital","Fiziksel"].includes(newProductData.type)?newProductData.type:"Dijital",isVisible:newProductData.isVisible!==false,createdAt:cid?(storeProducts.find(p=>p.id===cid)?.createdAt??new Date()):new Date()};try{if(cid){await callFAPI("PATCH",`store_products/${cid}`,toFF(prod));alert(`"${prod.name}" güncellendi!`);}else{await callFAPI("POST","store_products",toFF(prod));alert(`"${prod.name}" eklendi!`);}setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true});setEditingProductId(null);editingProductIdRef.current=null;}catch(err){handleFirebaseError(err);try{if(cid){await setDoc(doc(db,"store_products",cid),prod);alert("Güncellendi!");}else{await addDoc(collection(db,"store_products"),prod);alert("Eklendi!");}setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true});setEditingProductId(null);editingProductIdRef.current=null;}catch(e2){handleFirebaseError(e2);alert(`Hata: ${e2?.code||e2?.message}\nFirestore Rules güncel değil!`);}}};
+  // ➕ ÜRÜN EKLE veya GÜNCELLE
+  const saveProduct = async e => {
+    e.preventDefault();
+    const cid = editingProductIdRef.current;
 
-  const editProduct=prod=>{if(!prod.id)return;setEditingProductId(prod.id);editingProductIdRef.current=prod.id;setNewProductData({name:prod.name||'',price:String(prod.price||''),image:prod.image||'',desc:prod.desc||'',type:prod.type||'Dijital',isVisible:prod.isVisible!==false});document.getElementById('pfs')?.scrollIntoView({behavior:'smooth',block:'start'});};
-  const cancelEdit=()=>{setEditingProductId(null);editingProductIdRef.current=null;setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true});};
-  const toggleVis=async(id,vis)=>{if(!id)return;try{await callFAPI("PATCH",`store_products/${id}`,{fields:{isVisible:{booleanValue:!vis}}});}catch(e){try{await setDoc(doc(db,"store_products",id),{isVisible:!vis},{merge:true});}catch(e2){handleFirebaseError(e2);}}};
-  const deleteProduct=async id=>{if(!id)return;if(!window.confirm("Bu ürünü silmek istiyor musunuz?"))return;try{await callFAPI("DELETE",`store_products/${id}`);}catch(e){try{await deleteDoc(doc(db,"store_products",id));}catch(e2){handleFirebaseError(e2);alert(`Silinemedi: ${e2?.code}. Firestore Rules güncelleyin.`);}}};
-  const clearAllProducts=async()=>{if(!storeProducts.length){alert("Mağaza boş.");return;}if(!window.confirm(`⚠️ ${storeProducts.length} ürün silinecek!`))return;let ok=0,fail=0;for(const p of[...storeProducts]){if(!p.id)continue;try{await callFAPI("DELETE",`store_products/${p.id}`);ok++;}catch{try{await deleteDoc(doc(db,"store_products",p.id));ok++;}catch{fail++;}}}alert(fail===0?`✓ ${ok} ürün silindi.`:`${ok} silindi, ${fail} silinemedi.`);};
+    if (!newProductData.name?.trim() || !newProductData.image?.trim() || !newProductData.desc?.trim()) {
+      alert("Lütfen tüm alanları doldurun."); return;
+    }
+    const price = Number(newProductData.price);
+    if (isNaN(price) || price <= 0 || price > 100000) {
+      alert("Geçerli bir fiyat girin (1-100.000)."); return;
+    }
+    if (!newProductData.image.startsWith('http')) {
+      alert("Görsel URL'i http:// ile başlamalıdır."); return;
+    }
+
+    const prod = {
+      name: sanitizeText(newProductData.name).substring(0, 150),
+      price,
+      image: newProductData.image.trim(),
+      desc: sanitizeText(newProductData.desc).substring(0, 500),
+      type: ["Dijital","Fiziksel"].includes(newProductData.type) ? newProductData.type : "Dijital",
+      isVisible: newProductData.isVisible !== false,
+    };
+
+    try {
+      if (cid) {
+        // Güncelle — setDoc ile mevcut dokümanı yaz
+        const existing = storeProducts.find(p => p.id === cid);
+        await setDoc(doc(db, "store_products", cid), {
+          ...prod,
+          createdAt: existing?.createdAt ?? serverTimestamp(),
+        });
+        alert(`✓ "${prod.name}" güncellendi!`);
+      } else {
+        // Yeni ekle
+        await addDoc(collection(db, "store_products"), {
+          ...prod,
+          createdAt: serverTimestamp(),
+        });
+        alert(`✓ "${prod.name}" eklendi!`);
+      }
+      setNewProductData({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
+      setEditingProductId(null);
+      editingProductIdRef.current = null;
+    } catch (err) {
+      console.error("saveProduct error:", err);
+      alert(
+        `❌ Hata: ${err?.code || err?.message}\n\n` +
+        `Firestore Rules güncellenmemiş olabilir.\n` +
+        `Firebase Console → Firestore → Rules:\n` +
+        `match /store_products/{id} { allow read, write: if true; }`
+      );
+    }
+  };
+
+  // ✏️ DÜZENLEME MODUNU AÇ
+  const editProduct = prod => {
+    if (!prod.id) return;
+    setEditingProductId(prod.id);
+    editingProductIdRef.current = prod.id;
+    setNewProductData({
+      name: prod.name || '',
+      price: String(prod.price || ''),
+      image: prod.image || '',
+      desc: prod.desc || '',
+      type: prod.type || 'Dijital',
+      isVisible: prod.isVisible !== false,
+    });
+    document.getElementById('pfs')?.scrollIntoView({ behavior:'smooth', block:'start' });
+  };
+
+  // ✖️ DÜZENLEME İPTAL
+  const cancelEdit = () => {
+    setEditingProductId(null);
+    editingProductIdRef.current = null;
+    setNewProductData({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
+  };
+
+  // 👁️ GÖRÜNÜRLEŞTİR / GİZLE
+  const toggleVis = async (id, vis) => {
+    if (!id) return;
+    try {
+      await updateDoc(doc(db, "store_products", id), { isVisible: !vis });
+    } catch (err) {
+      console.error("toggleVis error:", err);
+      alert("Hata: " + (err?.code || err?.message));
+    }
+  };
+
+  // ❌ TEK ÜRÜN SİL
+  const deleteProduct = async id => {
+    if (!id) return;
+    if (!window.confirm("Bu ürünü silmek istiyor musunuz?")) return;
+    try {
+      await deleteDoc(doc(db, "store_products", id));
+    } catch (err) {
+      console.error("deleteProduct error:", err);
+      alert("Silinemedi: " + (err?.code || err?.message));
+    }
+  };
+
+  // 💣 TÜMÜNÜ SİL — Promise.all ile paralel (ChatGPT yöntemi)
+  const clearAllProducts = async () => {
+    if (!storeProducts.length) { alert("Mağaza zaten boş."); return; }
+    if (!window.confirm(`⚠️ ${storeProducts.length} ürünün TAMAMI silinecek. Geri alınamaz!`)) return;
+
+    try {
+      // Tüm silme işlemlerini paralel başlat
+      const deletePromises = storeProducts
+        .filter(p => p.id)
+        .map(p => deleteDoc(doc(db, "store_products", p.id)));
+
+      await Promise.all(deletePromises);
+
+      // UI garantili sıfırla
+      setStoreProducts([]);
+      alert(`✓ ${deletePromises.length} ürün silindi!`);
+    } catch (err) {
+      console.error("clearAllProducts error:", err);
+      alert("Toplu silme hatası: " + (err?.code || err?.message));
+    }
+  };
 
   const toggleBot=async()=>{if(isBotRunning){if(botIntervalRef.current){clearInterval(botIntervalRef.current);botIntervalRef.current=null;}setIsBotRunning(false);alert("Bot durduruldu.");return;}if(!currentUser){alert("Giriş yapın.");return;}setIsBotRunning(true);botIntervalRef.current=setInterval(async()=>{try{const live=GAMES.filter(g=>g.status==="Yayında");const rg=live[Math.floor(Math.random()*live.length)];await updateDoc(doc(db,"users",currentUser.id),{playCount:increment(1),lastPlayedGameName:rg.title,lastLogin:serverTimestamp(),[`gamePlayCounts.${rg.id}`]:increment(1)}).catch(handleFirebaseError);setCurrentUser(prev=>prev?({...prev,playCount:(Number(prev.playCount)||0)+1}):null);await earnFapCoin();}catch(e){handleFirebaseError(e);}},30000);alert("Bot başlatıldı!");};
 
