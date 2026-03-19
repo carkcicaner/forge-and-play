@@ -118,7 +118,7 @@ const LIVE_STATS = { todayPlayers: 1247, totalGamesPlayed: 18934, activeNow: 342
    ========================================================================= */
 const EMAILJS_CONFIG = {
   serviceId:  "service_x9l5ijz",
-  templateId: "rt35wq5",
+  templateId: "template_ltdl7bd",
   publicKey:  "067egHH8ARUOtBrGU",
   enabled: true,
 };
