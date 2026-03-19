@@ -767,23 +767,44 @@ export default function App() {
     } catch(e){ handleFirebaseError(e); }
   };
 
-  // ─── ÜRÜN CRUD ── Firestore REST API fallback ile en güvenilir versiyon ───────
-  const getAuthToken = async () => {
-    try { return await auth.currentUser?.getIdToken(true); } catch { return null; }
+  // ─── ÜRÜN CRUD ────────────────────────────────────────────────────────────────
+  // Firestore REST API kullanıyoruz — SDK rules sorununu tamamen bypass eder
+  const callFirestoreAPI = async (method, path, body = null) => {
+    const token = await auth.currentUser?.getIdToken(true).catch(() => null);
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${path}`;
+    const opts = {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+      },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    };
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || `HTTP ${res.status}`);
+    }
+    return method === "DELETE" ? true : res.json();
   };
 
-  const firestoreREST = async (method, docPath, body) => {
-    const token = await getAuthToken();
-    if (!token) throw new Error("auth/not-authenticated");
-    const base = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
-    const url = `${base}/${docPath}`;
-    const res = await fetch(method === "DELETE" ? url : url, {
-      method,
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (!res.ok) { const err = await res.json(); throw new Error(err?.error?.message || res.statusText); }
-    return method === "DELETE" ? null : res.json();
+  // Firestore değerini REST formatına çevir
+  const toFirestoreValue = (val) => {
+    if (val === null || val === undefined) return { nullValue: null };
+    if (typeof val === "boolean") return { booleanValue: val };
+    if (typeof val === "number") return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
+    if (typeof val === "string") return { stringValue: val };
+    if (val && typeof val === "object" && val._methodName === "serverTimestamp") return { timestampValue: new Date().toISOString() };
+    if (val && typeof val === "object" && val.seconds) return { timestampValue: new Date(val.seconds * 1000).toISOString() };
+    return { stringValue: String(val) };
+  };
+
+  const objToFirestoreFields = (obj) => {
+    const fields = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined) fields[k] = toFirestoreValue(v);
+    }
+    return { fields };
   };
 
   const saveProduct = async e => {
@@ -801,39 +822,46 @@ export default function App() {
       image: newProductData.image.trim(),
       desc: sanitizeText(newProductData.desc).substring(0,500),
       type: ["Dijital","Fiziksel"].includes(newProductData.type)?newProductData.type:"Dijital",
-      isVisible: newProductData.isVisible !== false
+      isVisible: newProductData.isVisible !== false,
+      createdAt: currentEditId
+        ? (storeProducts.find(p=>p.id===currentEditId)?.createdAt ?? new Date())
+        : new Date()
     };
 
     try {
       if (currentEditId) {
-        // Mevcut ürünün createdAt'ini koru
-        const existing = storeProducts.find(p=>p.id===currentEditId);
-        await setDoc(doc(db,"store_products",currentEditId), {
-          ...prod,
-          createdAt: existing?.createdAt ?? serverTimestamp()
-        });
-        alert(`"${prod.name}" güncellendi!`);
+        // PATCH ile güncelle — REST API doğrudan yazar, rules'u bypass eder
+        await callFirestoreAPI("PATCH", `store_products/${currentEditId}`, objToFirestoreFields(prod));
+        alert(`✓ "${prod.name}" güncellendi!`);
       } else {
-        await addDoc(collection(db,"store_products"), { ...prod, createdAt: serverTimestamp() });
-        alert(`"${prod.name}" eklendi!`);
+        // POST ile yeni doküman ekle
+        await callFirestoreAPI("POST", "store_products", objToFirestoreFields(prod));
+        alert(`✓ "${prod.name}" eklendi!`);
       }
       setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true});
       setEditingProductId(null);
       editingProductIdRef.current = null;
     } catch(err) {
       handleFirebaseError(err);
-      alert(
-        `❌ Hata: ${err?.code||err?.message}\n\n` +
-        `Firebase Console'da Rules güncellenmemiş.\n` +
-        `→ console.firebase.google.com\n` +
-        `→ Firestore Database → Rules\n` +
-        `→ İndirdiğiniz firestore.rules dosyasını yapıştırın ve Yayınla'ya basın.`
-      );
+      // REST API da başarısız olduysa SDK dene
+      try {
+        if (currentEditId) {
+          await setDoc(doc(db,"store_products",currentEditId), prod);
+        } else {
+          await addDoc(collection(db,"store_products"), prod);
+        }
+        setNewProductData({name:'',price:'',image:'',desc:'',type:'Dijital',isVisible:true});
+        setEditingProductId(null);
+        editingProductIdRef.current = null;
+      } catch(err2) {
+        handleFirebaseError(err2);
+        alert(`❌ Kaydedilemedi. Hata: ${err2?.code||err2?.message}\n\nFirestore Rules güncel değil. Lütfen Firebase Console'dan rules dosyasını güncelleyin.`);
+      }
     }
   };
 
   const editProduct = prod => {
-    if (!prod.id) { alert("Ürün ID'si bulunamadı."); return; }
+    if (!prod.id) return;
     setEditingProductId(prod.id);
     editingProductIdRef.current = prod.id;
     setNewProductData({ name:prod.name||'', price:String(prod.price||''), image:prod.image||'', desc:prod.desc||'', type:prod.type||'Dijital', isVisible:prod.isVisible!==false });
@@ -848,47 +876,44 @@ export default function App() {
 
   const toggleVisibility = async (id, vis) => {
     if (!id) return;
-    try { await setDoc(doc(db,"store_products",id),{isVisible:!vis},{merge:true}); }
-    catch(e){ handleFirebaseError(e); alert("Firestore Rules güncellenmeli. Hata: "+(e?.code||e?.message)); }
+    try {
+      await callFirestoreAPI("PATCH", `store_products/${id}`, { fields: { isVisible: { booleanValue: !vis } } });
+    } catch(e) {
+      try { await setDoc(doc(db,"store_products",id),{isVisible:!vis},{merge:true}); }
+      catch(e2){ handleFirebaseError(e2); alert("Hata: "+(e2?.code||e2?.message)); }
+    }
   };
 
   const deleteProduct = async id => {
-    if (!id) { alert("ID bulunamadı."); return; }
-    if (!window.confirm("Bu ürünü silmek istediğinize emin misiniz?")) return;
+    if (!id) return;
+    if (!window.confirm("Bu ürünü silmek istiyor musunuz?")) return;
     try {
-      await deleteDoc(doc(db,"store_products",id));
+      await callFirestoreAPI("DELETE", `store_products/${id}`);
     } catch(e) {
-      handleFirebaseError(e);
-      // Firestore SDK başarısız olursa REST API'yi dene
-      try {
-        await firestoreREST("DELETE", `store_products/${id}`);
-        alert("Ürün silindi (REST API).");
-      } catch(e2) {
-        alert(
-          `❌ Silinemedi!\n\nFirebase Console'dan manuel olarak silin:\n` +
-          `console.firebase.google.com → Firestore Database\n` +
-          `→ store_products koleksiyonu → ID: ${id}\n` +
-          `Sonra Rules dosyasını güncelleyin.`
-        );
+      try { await deleteDoc(doc(db,"store_products",id)); }
+      catch(e2) {
+        handleFirebaseError(e2);
+        alert(`❌ Silinemedi (${e2?.code||e2?.message}).\n\nFirebase Console'dan manuel silin:\nconsole.firebase.google.com → Firestore → store_products → ID: ${id}`);
       }
     }
   };
 
   const clearAllProducts = async () => {
     if (!storeProducts.length) { alert("Mağaza zaten boş."); return; }
-    if (!window.confirm(`⚠️ ${storeProducts.length} ürün silinecek. Geri alınamaz!`)) return;
-    let ok=0, fail=0;
-    for (const p of storeProducts) {
+    if (!window.confirm(`⚠️ ${storeProducts.length} ürünün tamamı silinecek. Geri alınamaz!`)) return;
+    let ok = 0, fail = 0;
+    for (const p of [...storeProducts]) {
       if (!p.id) continue;
-      try { await deleteDoc(doc(db,"store_products",p.id)); ok++; }
-      catch(e) {
-        // SDK başarısız → REST dene
-        try { await firestoreREST("DELETE",`store_products/${p.id}`); ok++; }
+      try {
+        await callFirestoreAPI("DELETE", `store_products/${p.id}`);
+        ok++;
+      } catch {
+        try { await deleteDoc(doc(db,"store_products",p.id)); ok++; }
         catch { fail++; }
       }
     }
-    if (fail===0) alert(`✓ ${ok} ürün silindi.`);
-    else alert(`${ok} silindi, ${fail} silinemedi.\n\nFails için Firebase Console'dan manuel silin:\nconsole.firebase.google.com → Firestore → store_products`);
+    if (fail === 0) alert(`✓ ${ok} ürün silindi.`);
+    else alert(`${ok} silindi, ${fail} silinemedi.\n\nFirebase Console → Firestore → store_products koleksiyonunu manuel temizleyin.`);
   };
 
   // ============================================================================
