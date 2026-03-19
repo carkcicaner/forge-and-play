@@ -263,6 +263,8 @@ export default function App() {
   const [selectedLibraryGame, setSelectedLibraryGame] = useState(GAMES[0]);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [paymentIntent, setPaymentIntent] = useState(null);
+  const [shopierOrderInput, setShopierOrderInput] = useState("");
+  const [selfActivating, setSelfActivating] = useState(false);
   const [premiumWarningGame, setPremiumWarningGame] = useState(null);
   const [trialPromptGame, setTrialPromptGame] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
@@ -403,8 +405,130 @@ export default function App() {
 
   const handleGoogleLogin=async()=>{setAuthError("");try{await signInWithPopup(auth,googleProvider);setShowLoginModal(false);}catch(e){setAuthError(e.code==='auth/popup-closed-by-user'?"Pencere kapatıldı.":"Google girişi başarısız.");}};
   const handlePasswordReset=async()=>{const email=emailInput.trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){setAuthError("Geçerli e-posta girin.");return;}try{await sendPasswordResetEmail(auth,email);setAuthError("Bağlantı gönderildi.");setShowResetPassword(false);}catch{setAuthError("E-posta gönderilemedi.");}};
-  const handlePurchaseRequest=async plan=>{if(!currentUser){setPremiumWarningGame(null);setActiveTab("premium");setShowLoginModal(true);return;}if(!PAYMENT_LINKS[plan]){alert("Geçersiz plan.");return;}try{await updateDoc(doc(db,"users",currentUser.id),{pendingRequest:plan,lastPurchaseAttempt:serverTimestamp()}).catch(handleFirebaseError);setPremiumWarningGame(null);setPaymentIntent({url:PAYMENT_LINKS[plan],plan});}catch{alert("Talep oluşturulamadı.");}};
-  const handleFeedbackSubmit=async data=>{if(!currentUser)return;setIsSubmittingFeedback(true);try{await addDoc(collection(db,"feedbacks"),{text:sanitizeText(data.text),game:sanitizeText(data.game),userId:currentUser.id,user:sanitizeText(currentUser.name||currentUser.email),email:String(currentUser.email),status:"beklemede",createdAt:serverTimestamp(),date:new Date().toLocaleDateString('tr-TR')}).catch(handleFirebaseError);alert("Geri bildiriminiz gönderildi!");}catch{alert("Gönderilemedi.");}finally{setIsSubmittingFeedback(false);}};
+  const handlePurchaseRequest = async plan => {
+    if (!currentUser) { setPremiumWarningGame(null); setActiveTab("premium"); setShowLoginModal(true); return; }
+    if (!PAYMENT_LINKS[plan]) { alert("Geçersiz plan."); return; }
+    try {
+      await updateDoc(doc(db,"users",currentUser.id),{ pendingRequest:plan, lastPurchaseAttempt:serverTimestamp() }).catch(handleFirebaseError);
+      setPremiumWarningGame(null);
+      setPaymentIntent({ url:PAYMENT_LINKS[plan], plan });
+    } catch { alert("Talep oluşturulamadı."); }
+  };
+
+  /*
+   * ═══════════════════════════════════════════════════════════════════════
+   * AKILLI OTOMATİK PREMIUM SİSTEMİ
+   * ───────────────────────────────────────────────────────────────────────
+   * Tetikleyici: Kullanıcı "Shopier'a Git" butonuna bastığı AN
+   *
+   * ZAMAN DİLİMİ KURALLARI:
+   *  GECE  (00:00–08:00) → 8 saat geçici premium
+   *  GÜNDÜZ(08:00–24:00) → 30 dakika geçici premium
+   *
+   * KÖTÜYE KULLANIM KORUMASI:
+   *  • Kullanıcı daha önce hiç ödemeden iptal aldıysa (abuseCount > 0)
+   *    → yalnızca 30 dakika (zaman diliminden bağımsız)
+   *  • Aynı plan için 2. kez deneme yapıyorsa → yalnızca 30 dakika
+   *
+   * GÜVENLİK:
+   *  • awaitingAdminVerification = true  → admin panelinde görünür
+   *  • tempPremiumExpiresAt kaydedilir   → admin iptal edebilir
+   *  • 1 saat içinde onay yoksa premium iptal edilmez (gece 8 saat verildi)
+   *    admin sabah kalkınca manuel iptal eder
+   * ═══════════════════════════════════════════════════════════════════════
+   */
+  const handleGoToShopier = async (plan, shopierUrl) => {
+    if (!currentUser) return;
+
+    const now = new Date();
+    const hour = now.getHours(); // TR saati (tarayıcı saati)
+    const isNight = hour >= 0 && hour < 8; // 00:00 – 07:59
+
+    // Kötüye kullanım sayısını kontrol et
+    const abuseCount = Number(currentUser.abuseCount || 0);
+    const lastPlanAttempt = currentUser.lastPlanAttempt;
+    const isRepeatAttempt = lastPlanAttempt === plan && abuseCount > 0;
+
+    // Süre belirle
+    let tempMinutes;
+    let reason;
+
+    if (abuseCount >= 2) {
+      // 2+ kez kötüye kullandı → sadece 30 dakika
+      tempMinutes = 30;
+      reason = "abuse_limited";
+    } else if (isRepeatAttempt) {
+      // Aynı planı daha önce denedi ve iptal edildi
+      tempMinutes = 30;
+      reason = "repeat_attempt";
+    } else if (isNight) {
+      // Gece 00:00 – 08:00 → 8 saat
+      tempMinutes = 8 * 60; // 480 dakika
+      reason = "night_window";
+    } else {
+      // Gündüz 08:00 – 24:00 → 30 dakika
+      tempMinutes = 30;
+      reason = "day_window";
+    }
+
+    const tempEnd = new Date(now.getTime() + tempMinutes * 60 * 1000);
+
+    const tempLabel = tempMinutes >= 60
+      ? `${Math.floor(tempMinutes/60)} saat`
+      : `${tempMinutes} dakika`;
+
+    try {
+      await updateDoc(doc(db,"users",currentUser.id), {
+        premiumEndDate: tempEnd.toISOString(),
+        pendingRequest: plan,
+        awaitingAdminVerification: true,
+        tempPremiumExpiresAt: tempEnd.toISOString(),
+        tempPremiumGrantedAt: now.toISOString(),
+        tempPremiumReason: reason,
+        tempPremiumMinutes: tempMinutes,
+        lastPlanAttempt: plan,
+      }).catch(handleFirebaseError);
+
+      setCurrentUser(prev => prev ? {
+        ...prev,
+        premiumEndDate: tempEnd.toISOString(),
+        pendingRequest: plan,
+        awaitingAdminVerification: true,
+      } : null);
+
+      // Shopier sayfasını aç
+      window.open(shopierUrl, "_blank", "noopener,noreferrer");
+      setPaymentIntent(null);
+
+      // Kullanıcıya bilgi ver
+      const msg = isNight
+        ? `✅ ${tempLabel} Premium aktif!\n\nGece saatinde sipariş verdiğiniz için sabah 08:00'e kadar oynayabilirsiniz.\nAdmin sabah ödemenizi doğrulayacak.`
+        : `✅ ${tempLabel} Premium aktif!\n\nÖdeme tamamlandıktan sonra admin en kısa sürede onaylayacak.\nOnay sonrası tam süreniz başlayacak.`;
+
+      // 3 saniye sonra alert göster (Shopier sekmesi önce açılsın)
+      setTimeout(() => alert(msg), 1500);
+
+    } catch (err) {
+      handleFirebaseError(err);
+      // Hata olsa bile Shopier'a git
+      window.open(shopierUrl, "_blank", "noopener,noreferrer");
+      setPaymentIntent(null);
+    }
+  };
+
+  // Admin: geçici premiumu iptal et + abuseCount artır
+  const revokeAndPenalize = async (uid) => {
+    const u = usersList.find(x => x.id === uid);
+    if (!u) return;
+    const newCount = Number(u.abuseCount || 0) + 1;
+    await updateDoc(doc(db,"users",uid), {
+      premiumEndDate: null,
+      pendingRequest: null,
+      awaitingAdminVerification: false,
+      abuseCount: newCount,
+    }).catch(handleFirebaseError);
+    alert(`İptal edildi. Bu kullanıcının kötüye kullanım sayısı: ${newCount}`);
+  };=async data=>{if(!currentUser)return;setIsSubmittingFeedback(true);try{await addDoc(collection(db,"feedbacks"),{text:sanitizeText(data.text),game:sanitizeText(data.game),userId:currentUser.id,user:sanitizeText(currentUser.name||currentUser.email),email:String(currentUser.email),status:"beklemede",createdAt:serverTimestamp(),date:new Date().toLocaleDateString('tr-TR')}).catch(handleFirebaseError);alert("Geri bildiriminiz gönderildi!");}catch{alert("Gönderilemedi.");}finally{setIsSubmittingFeedback(false);}};
   const handleRewardPurchase=async e=>{e.preventDefault();if(!currentUser||!selectedProduct)return;const balance=Number(currentUser.fapCoin||0);const cost=Number(selectedProduct.price||0);if(balance<cost){alert(`Yetersiz FAP Coin!\nBakiye: ${balance.toFixed(1)}\nGerekli: ${cost}`);return;}if(selectedProduct.type==="Fiziksel"&&!orderAddress.trim()){alert("Adres zorunludur.");return;}setIsOrdering(true);try{const newBal=balance-cost;await updateDoc(doc(db,"users",currentUser.id),{fapCoin:newBal}).catch(handleFirebaseError);await addDoc(collection(db,"orders"),{userId:currentUser.id,userEmail:String(currentUser.email),userName:sanitizeText(currentUser.name||"İsimsiz"),productId:selectedProduct.id,productName:sanitizeText(selectedProduct.name),productType:selectedProduct.type,fapCost:cost,addressDetails:sanitizeText(orderAddress||"Dijital"),status:"Onay Bekliyor",createdAt:serverTimestamp()}).catch(handleFirebaseError);setCurrentUser(prev=>prev?{...prev,fapCoin:newBal}:null);alert("Siparişiniz alındı!");setSelectedProduct(null);setOrderAddress("");}catch(err){handleFirebaseError(err);alert("Sipariş oluşturulamadı.");}finally{setIsOrdering(false);}};
 
   /*
@@ -633,7 +757,24 @@ export default function App() {
   const toggleBot=async()=>{if(isBotRunning){if(botIntervalRef.current){clearInterval(botIntervalRef.current);botIntervalRef.current=null;}setIsBotRunning(false);alert("Bot durduruldu.");return;}if(!currentUser){alert("Giriş yapın.");return;}setIsBotRunning(true);botIntervalRef.current=setInterval(async()=>{try{const live=GAMES.filter(g=>g.status==="Yayında");const rg=live[Math.floor(Math.random()*live.length)];await updateDoc(doc(db,"users",currentUser.id),{playCount:increment(1),lastPlayedGameName:rg.title,lastLogin:serverTimestamp(),[`gamePlayCounts.${rg.id}`]:increment(1)}).catch(handleFirebaseError);setCurrentUser(prev=>prev?({...prev,playCount:(Number(prev.playCount)||0)+1}):null);await earnFapCoin();}catch(e){handleFirebaseError(e);}},30000);alert("Bot başlatıldı!");};
 
   // Admin helpers
-  const approvePremium=async(uid,plan)=>{const m={'1A':1,'6A':6,'1Y':12};const u=usersList.find(x=>x.id===uid);if(!u)return;const base=u.premiumEndDate&&new Date(u.premiumEndDate)>new Date()?new Date(u.premiumEndDate):new Date();base.setMonth(base.getMonth()+(m[plan]||1));await updateDoc(doc(db,"users",uid),{premiumEndDate:base.toISOString(),pendingRequest:null}).catch(handleFirebaseError);};
+  const approvePremium = async (uid, plan) => {
+    const m = { '1A':1, '6A':6, '1Y':12 };
+    const u = usersList.find(x => x.id === uid);
+    if (!u) return;
+
+    // Eğer self-activate ile geçici premium verildiyse → bugünden tam süreyi hesapla
+    // (48 saatlik geçici süreyi iptal et, gerçek planı ver)
+    const base = new Date(); // Her zaman bugünden başlat (adil)
+    base.setMonth(base.getMonth() + (m[plan] || 1));
+
+    await updateDoc(doc(db, "users", uid), {
+      premiumEndDate: base.toISOString(),
+      pendingRequest: null,
+      awaitingAdminVerification: false,
+      approvedAt: serverTimestamp(),
+      approvedPlan: plan,
+    }).catch(handleFirebaseError);
+  };
   const revokePremium=async uid=>await updateDoc(doc(db,"users",uid),{premiumEndDate:null,pendingRequest:null}).catch(handleFirebaseError);
   const deleteUser=async user=>{if(user.role==="admin"||ADMIN_EMAILS.includes(String(user.email).toLowerCase().trim())){alert("Admin silinemez!");return;}if(!window.confirm(`"${user.name||user.email}" silinsin mi?`))return;try{await deleteDoc(doc(db,"users",user.id));alert("Silindi.");}catch(e){handleFirebaseError(e);alert("Silinemedi: "+(e?.code||e?.message));}};
   const approveFeedback=async(id,status)=>await updateDoc(doc(db,"feedbacks",id),{status}).catch(handleFirebaseError);
@@ -1233,20 +1374,98 @@ export default function App() {
 
   // ── PAYMENT MODAL ───────────────────────────────────────────────────────────────────
   const renderPaymentModal = () => {
-    if(!paymentIntent||!currentUser)return null;
-    const copy=async()=>{try{await navigator.clipboard.writeText(currentUser.paymentCode);setIsCopied(true);setTimeout(()=>setIsCopied(false),2000);}catch{}};
-    return(
-      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl relative text-center">
+    if (!paymentIntent || !currentUser) return null;
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(currentUser.paymentCode); setIsCopied(true); setTimeout(()=>setIsCopied(false),2000); } catch {}
+    };
+
+    const plan = paymentIntent.plan;
+    const planInfo = { "1A":"1 Aylık — 39₺", "6A":"6 Aylık — 179₺", "1Y":"1 Yıllık — 299₺" };
+
+    // Kaç dakika/saat geçici premium verileceğini göster
+    const hour = new Date().getHours();
+    const isNight = hour >= 0 && hour < 8;
+    const abuseCount = Number(currentUser.abuseCount || 0);
+    const isAbuser = abuseCount >= 2;
+    const tempLabel = isAbuser ? "30 dakika" : isNight ? "8 saat" : "30 dakika";
+    const tempColor = isNight && !isAbuser ? "text-emerald-400" : "text-amber-400";
+    const tempBg   = isNight && !isAbuser ? "bg-emerald-500/10 border-emerald-500/20" : "bg-amber-500/10 border-amber-500/20";
+
+    return (
+      <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md shadow-2xl relative my-auto">
           <button onClick={()=>setPaymentIntent(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/50 p-2 rounded-full"><X className="w-5 h-5"/></button>
-          <div className="w-14 h-14 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/20"><Wallet className="w-7 h-7 text-orange-500"/></div>
-          <h2 className="text-xl font-black text-white mb-2">Ödeme Kodu</h2>
-          <p className="text-slate-300 text-sm mb-5">Shopier'daki <strong className="text-white bg-slate-800 px-1.5 py-0.5 rounded">"Sipariş Notu"</strong> kısmına bu kodu yazın.</p>
-          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-5 flex items-center justify-between">
-            <span className="text-2xl font-mono font-black text-orange-400 tracking-wider">{currentUser.paymentCode}</span>
-            <button onClick={copy} className={`p-2.5 rounded-lg border transition-colors ${isCopied?"bg-emerald-500/10 text-emerald-400 border-emerald-500/30":"bg-slate-800 text-slate-300 hover:text-white border-slate-700"}`}>{isCopied?<Check className="w-4 h-4"/>:<Copy className="w-4 h-4"/>}</button>
+
+          <div className="p-6 md:p-8">
+            {/* Başlık */}
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-3 border border-orange-500/20">
+                <Wallet className="w-7 h-7 text-orange-500"/>
+              </div>
+              <h2 className="text-xl font-black text-white">Premium Satın Al</h2>
+              <p className="text-slate-400 text-sm mt-1">{planInfo[plan]}</p>
+            </div>
+
+            {/* Geçici premium bilgisi */}
+            <div className={`${tempBg} border rounded-2xl p-4 mb-5 text-center`}>
+              <div className={`text-lg font-black ${tempColor} mb-0.5`}>
+                {isNight && !isAbuser ? "🌙 Gece Avantajı!" : "⚡ Anında Aktif!"}
+              </div>
+              <p className="text-slate-300 text-sm">
+                Shopier'a gittiğiniz anda{" "}
+                <span className={`font-black ${tempColor}`}>{tempLabel} geçici Premium</span> başlıyor.
+              </p>
+              <p className="text-slate-500 text-xs mt-1">
+                {isNight && !isAbuser
+                  ? "Gece siparişi — sabah admin onaylayacak, tam süre başlayacak."
+                  : "Admin en kısa sürede onaylayacak, tam süreniz aktif olacak."}
+              </p>
+            </div>
+
+            {/* Ödeme kodu */}
+            <div className="mb-5">
+              <div className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-black flex items-center justify-center">1</span>
+                Ödeme Kodunu Kopyala
+              </div>
+              <div className="bg-slate-950 border border-orange-500/30 rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] text-slate-500 mb-0.5">Shopier Sipariş Notu'na Yapıştır</div>
+                  <span className="text-2xl font-mono font-black text-orange-400 tracking-widest">{currentUser.paymentCode}</span>
+                </div>
+                <button onClick={copy} className={`p-2.5 rounded-lg border transition-all ${isCopied?"bg-emerald-500/10 text-emerald-400 border-emerald-500/30 scale-110":"bg-slate-800 text-slate-300 hover:text-white border-slate-700"}`}>
+                  {isCopied ? <Check className="w-5 h-5"/> : <Copy className="w-5 h-5"/>}
+                </button>
+              </div>
+            </div>
+
+            {/* Ana buton */}
+            <div className="mb-4">
+              <div className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-black flex items-center justify-center">2</span>
+                Ödemeyi Tamamla
+              </div>
+              <button
+                onClick={() => handleGoToShopier(plan, paymentIntent.url)}
+                className="w-full py-4 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black rounded-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-lg shadow-orange-500/20 text-lg"
+              >
+                <ExternalLink className="w-5 h-5"/>
+                Shopier'a Git &amp; {tempLabel} Premium Al
+              </button>
+            </div>
+
+            {/* Güven notu */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-center space-y-1">
+              <p className="text-[11px] text-slate-500">
+                🔒 SSL güvenli ödeme · Shopier altyapısı · Kart bilgileriniz Forge&Play'de saklanmaz
+              </p>
+              {isAbuser && (
+                <p className="text-[11px] text-amber-500">
+                  ⚠️ Hesabınızda geçmiş ödeme sorunları var, geçici süre kısaltılmıştır.
+                </p>
+              )}
+            </div>
           </div>
-          <button onClick={()=>{window.open(paymentIntent.url,"_blank","noopener,noreferrer");setPaymentIntent(null);}} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl flex items-center justify-center gap-2">Kopyaladım, Ödemeye Geç <ChevronRight className="w-5 h-5"/></button>
         </div>
       </div>
     );
@@ -1590,40 +1809,80 @@ export default function App() {
             </div>
           </div>
 
-          {/* Bekleyen ödemeler */}
-          {usersList.filter(u=>u.pendingRequest).length > 0 && (
+          {/* Doğrulama Bekleyenler */}
+          {usersList.filter(u=>u.awaitingAdminVerification||u.pendingRequest).length > 0 && (
             <div>
               <h3 className="font-bold text-white mb-3 flex items-center gap-2">
                 <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"/>
-                Onay Bekleyen Ödemeler ({usersList.filter(u=>u.pendingRequest).length})
+                Onay Bekleyen Geçici Premium ({usersList.filter(u=>u.awaitingAdminVerification||u.pendingRequest).length})
               </h3>
               <div className="space-y-3">
-                {usersList.filter(u=>u.pendingRequest).map(u=>(
-                  <div key={u.id} className="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${getAvatarColor(u.name)} flex items-center justify-center text-sm font-black text-white shrink-0`}>{String(u.name||"U").charAt(0).toUpperCase()}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-white">{u.name||"Kullanıcı"}</div>
-                      <div className="text-xs text-slate-400">{u.email}</div>
-                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                        <div className="bg-slate-950 border border-orange-500/30 px-3 py-1 rounded-lg">
-                          <span className="text-[10px] text-slate-500 uppercase font-bold mr-1.5">Shopier Kodu:</span>
-                          <span className="text-orange-400 font-mono font-black tracking-wider">{u.paymentCode||"—"}</span>
+                {usersList.filter(u=>u.awaitingAdminVerification||u.pendingRequest).map(u=>{
+                  const tempExpires = u.tempPremiumExpiresAt ? new Date(u.tempPremiumExpiresAt) : null;
+                  const expiredAgo = tempExpires && tempExpires < new Date();
+                  const minsLeft = tempExpires ? Math.max(0, Math.round((tempExpires-new Date())/60000)) : null;
+                  const reasonLabel = {
+                    night_window: "🌙 Gece penceresi (8 saat)",
+                    day_window: "☀️ Gündüz penceresi (30 dk)",
+                    abuse_limited: "⚠️ Kötüye kullanım (30 dk)",
+                    repeat_attempt: "🔁 Tekrar deneme (30 dk)",
+                  }[u.tempPremiumReason] || "Geçici premium";
+
+                  return (
+                    <div key={u.id} className={`border rounded-2xl p-4 ${expiredAgo?"bg-slate-900/50 border-slate-700":"bg-amber-950/20 border-amber-500/30"}`}>
+                      <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+                        {/* Avatar + bilgi */}
+                        <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${getAvatarColor(u.name)} flex items-center justify-center text-sm font-black text-white shrink-0`}>
+                          {String(u.name||"U").charAt(0).toUpperCase()}
                         </div>
-                        <span className="text-xs font-bold px-2 py-1 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/20">
-                          Plan: {u.pendingRequest}
-                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-white">{u.name||"Kullanıcı"}</div>
+                          <div className="text-xs text-slate-400">{u.email}</div>
+                          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                            {/* Shopier kodu */}
+                            <code className="text-xs font-mono font-black text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded">{u.paymentCode||"—"}</code>
+                            {/* Plan */}
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300">Plan: {u.pendingRequest}</span>
+                            {/* Neden / süre */}
+                            <span className="text-[10px] text-slate-500">{reasonLabel}</span>
+                            {/* Kalan süre */}
+                            {tempExpires && !expiredAgo && (
+                              <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                ⏱ {minsLeft} dk kaldı
+                              </span>
+                            )}
+                            {expiredAgo && (
+                              <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-0.5 rounded">
+                                Süresi Doldu
+                              </span>
+                            )}
+                            {/* Kötüye kullanım sayısı */}
+                            {Number(u.abuseCount||0) > 0 && (
+                              <span className="text-[10px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
+                                ⚠️ {u.abuseCount}x iptal geçmişi
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Butonlar */}
+                        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                          <button onClick={()=>approvePremium(u.id, u.pendingRequest)}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition-colors flex items-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4"/> Onayla ({u.pendingRequest})
+                          </button>
+                          <button onClick={()=>revokeAndPenalize(u.id)}
+                            className="px-3 py-2 bg-red-500/10 hover:bg-red-600 hover:text-white text-red-400 font-bold rounded-xl text-sm border border-red-500/20 transition-colors flex items-center gap-1.5">
+                            <Trash className="w-4 h-4"/> İptal + Ceza
+                          </button>
+                          <button onClick={()=>revokePremium(u.id)}
+                            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold rounded-xl text-sm border border-slate-700 transition-colors text-xs">
+                            Sadece İptal
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={()=>approvePremium(u.id,u.pendingRequest)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition-colors">
-                        ✓ Onayla ({u.pendingRequest})
-                      </button>
-                      <button onClick={()=>revokePremium(u.id)} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-red-400 font-bold rounded-xl text-sm border border-slate-700 transition-colors">
-                        İptal
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
