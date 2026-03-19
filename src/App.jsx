@@ -117,17 +117,17 @@ const LIVE_STATS = { todayPlayers: 1247, totalGamesPlayed: 18934, activeNow: 342
    5. Aşağıdaki değerleri doldur
    ========================================================================= */
 const EMAILJS_CONFIG = {
-  serviceId:  "service_x9l5ijz",    // EmailJS panelinden al
-  templateId: "templates_rt35wq5",   // EmailJS panelinden al
-  publicKey:  "067egHH8ARUOtBrGU", // EmailJS Account → Public Key
-  enabled: true, // Yukarıdakileri doldurduktan sonra true yap
+  serviceId:  "service_x9l5ijz",
+  templateId: "template_rt35wq5",
+  publicKey:  "067egHH8ARUOtBrGU",
+  enabled: true,
 };
 
 // EmailJS REST API ile mail gönder (npm paketi gerektirmez)
 async function sendEmailNotification(subject, body, replyTo) {
-  if (!EMAILJS_CONFIG.enabled) return; // Yapılandırılmamışsa atla
+  if (!EMAILJS_CONFIG.enabled) return;
   try {
-    await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -135,14 +135,22 @@ async function sendEmailNotification(subject, body, replyTo) {
         template_id: EMAILJS_CONFIG.templateId,
         user_id:     EMAILJS_CONFIG.publicKey,
         template_params: {
-          to_email: "forgeandplay@gmail.com",
+          to_email:  "forgeandplay@gmail.com",
           cc_email:  "carkci.caner@gmail.com",
-          subject,
-          message: body,
-          reply_to: replyTo || "noreply@forgeandplay.com",
+          subject:   subject,
+          name:      "Forge&Play Sistem",
+          message:   body,
+          email:     replyTo || "noreply@forgeandplay.com",
+          reply_to:  replyTo || "noreply@forgeandplay.com",
         }
       })
     });
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn("EmailJS hata:", res.status, err);
+    } else {
+      console.log("Email gönderildi:", subject);
+    }
   } catch (e) {
     console.warn("Email gönderilemedi:", e);
   }
