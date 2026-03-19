@@ -117,10 +117,10 @@ const LIVE_STATS = { todayPlayers: 1247, totalGamesPlayed: 18934, activeNow: 342
    5. Aşağıdaki değerleri doldur
    ========================================================================= */
 const EMAILJS_CONFIG = {
-  serviceId:  "service_XXXXXXX",    // EmailJS panelinden al
-  templateId: "template_XXXXXXX",   // EmailJS panelinden al
-  publicKey:  "XXXXXXXXXXXXXXXXXXXX", // EmailJS Account → Public Key
-  enabled: false, // Yukarıdakileri doldurduktan sonra true yap
+  serviceId:  "service_x9l5ijz",    // EmailJS panelinden al
+  templateId: "templates_rt35wq5",   // EmailJS panelinden al
+  publicKey:  "067egHH8ARUOtBrGU", // EmailJS Account → Public Key
+  enabled: true, // Yukarıdakileri doldurduktan sonra true yap
 };
 
 // EmailJS REST API ile mail gönder (npm paketi gerektirmez)
