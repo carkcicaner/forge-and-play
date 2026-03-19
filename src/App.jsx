@@ -520,7 +520,24 @@ export default function App() {
   // ── LIKE / COMMENT ─────────────────────────────────────────────────────────────
   const handleLike = async(gameId)=>{if(!currentUser){setShowLoginModal(true);return;}if(likedGames.has(gameId)){alert("Bu oyunu zaten beğendiniz.");return;}try{await setDoc(doc(db,"game_likes",gameId),{count:increment(1)},{merge:true});const newLiked=new Set([...likedGames,gameId]);setLikedGames(newLiked);await setDoc(doc(db,"user_likes",currentUser.id),{games:[...newLiked]},{merge:true});}catch(e){handleFirebaseError(e);}};
 
-  const handleComment = async(gameId)=>{if(!currentUser){setShowLoginModal(true);return;}const t=commentText.trim();if(t.length<3){return;}if(containsProfanity(t)){alert("Uygunsuz ifade.");return;}if(!commentRateLimiter(currentUser.id)){alert("Çok hızlı yorum yapıyorsunuz.");return;}try{await addDoc(collection(db,"game_comments"),{gameId,userId:currentUser.id,userName:sanitizeText(currentUser.name||"Oyuncu"),text:sanitizeText(t),createdAt:serverTimestamp()});setCommentText("");}catch(e){handleFirebaseError(e);}};
+  const handleComment = async(gameId)=>{
+    if(!currentUser){setShowLoginModal(true);return;}
+    const t=commentText.trim();
+    if(t.length<3){return;}
+    if(containsProfanity(t)){alert("Uygunsuz ifade.");return;}
+    if(!commentRateLimiter(currentUser.id)){alert("Çok hızlı yorum yapıyorsunuz.");return;}
+    try{
+      const gameName = GAMES.find(g=>g.id===gameId)?.title || gameId;
+      await addDoc(collection(db,"game_comments"),{gameId,userId:currentUser.id,userName:sanitizeText(currentUser.name||"Oyuncu"),text:sanitizeText(t),createdAt:serverTimestamp()});
+      setCommentText("");
+      // 📧 Yorum bildirimi
+      sendEmailNotification(
+        `💬 Yeni Yorum — ${gameName}`,
+        `Bir kullanıcı yorum yaptı!\n\nOyun: ${gameName}\nKullanıcı: ${currentUser.name||"Oyuncu"}\nE-posta: ${currentUser.email}\nYorum: ${t}\nTarih: ${new Date().toLocaleString('tr-TR')}`,
+        currentUser.email
+      );
+    }catch(e){handleFirebaseError(e);}
+  };
 
   // ── AUTH ──────────────────────────────────────────────────────────────────────
   const handleLoginSubmit=async e=>{e.preventDefault();setAuthError("");const email=emailInput.trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){setAuthError("Geçerli e-posta girin.");return;}if(!passwordInput){setAuthError("Şifre boş olamaz.");return;}if(!loginRateLimiter(email)){setAuthError("Çok fazla deneme. 5 dk bekleyin.");return;}try{if(isRegistering){if(passwordInput.length<6){setAuthError("Şifre en az 6 karakter.");return;}await createUserWithEmailAndPassword(auth,email,passwordInput);}else await signInWithEmailAndPassword(auth,email,passwordInput);setShowLoginModal(false);setPasswordInput("");setEmailInput("");}catch(err){const m={'auth/email-already-in-use':"Bu e-posta kullanılıyor.",'auth/invalid-email':"Geçersiz e-posta.",'auth/user-not-found':"Bilgiler hatalı.",'auth/wrong-password':"Bilgiler hatalı.",'auth/invalid-credential':"Bilgiler hatalı.",'auth/too-many-requests':"Hesap kilitlendi."};setAuthError(m[err.code]||"Giriş başarısız.");}};
@@ -659,7 +676,30 @@ export default function App() {
     alert(`İptal edildi. Bu kullanıcının kötüye kullanım sayısı: ${newCount}`);
   };
 
-  const handleFeedbackSubmit=async data=>{if(!currentUser)return;setIsSubmittingFeedback(true);try{await addDoc(collection(db,"feedbacks"),{text:sanitizeText(data.text),game:sanitizeText(data.game),userId:currentUser.id,user:sanitizeText(currentUser.name||currentUser.email),email:String(currentUser.email),status:"beklemede",createdAt:serverTimestamp(),date:new Date().toLocaleDateString('tr-TR')}).catch(handleFirebaseError);alert("Geri bildiriminiz gönderildi!");}catch{alert("Gönderilemedi.");}finally{setIsSubmittingFeedback(false);}};
+  const handleFeedbackSubmit=async data=>{
+    if(!currentUser)return;
+    setIsSubmittingFeedback(true);
+    try{
+      await addDoc(collection(db,"feedbacks"),{
+        text:sanitizeText(data.text),
+        game:sanitizeText(data.game),
+        userId:currentUser.id,
+        user:sanitizeText(currentUser.name||currentUser.email),
+        email:String(currentUser.email),
+        status:"beklemede",
+        createdAt:serverTimestamp(),
+        date:new Date().toLocaleDateString('tr-TR')
+      }).catch(handleFirebaseError);
+      alert("Geri bildiriminiz gönderildi!");
+      // 📧 Fikir bildirimi
+      sendEmailNotification(
+        `💡 Yeni Fikir — ${data.game}`,
+        `Bir kullanıcı fikir gönderdi!\n\nOyun: ${data.game}\nKullanıcı: ${currentUser.name||"Oyuncu"}\nE-posta: ${currentUser.email}\nFikir: ${data.text}\nTarih: ${new Date().toLocaleString('tr-TR')}\n\nAdmin paneli → Fikirler sekmesinden yanıtlayabilirsiniz.`,
+        currentUser.email
+      );
+    }catch{alert("Gönderilemedi.");}
+    finally{setIsSubmittingFeedback(false);}
+  };
   const handleRewardPurchase=async e=>{e.preventDefault();if(!currentUser||!selectedProduct)return;const balance=Number(currentUser.fapCoin||0);const cost=Number(selectedProduct.price||0);if(balance<cost){alert(`Yetersiz FAP Coin!\nBakiye: ${balance.toFixed(1)}\nGerekli: ${cost}`);return;}if(selectedProduct.type==="Fiziksel"&&!orderAddress.trim()){alert("Adres zorunludur.");return;}setIsOrdering(true);try{const newBal=balance-cost;await updateDoc(doc(db,"users",currentUser.id),{fapCoin:newBal}).catch(handleFirebaseError);await addDoc(collection(db,"orders"),{userId:currentUser.id,userEmail:String(currentUser.email),userName:sanitizeText(currentUser.name||"İsimsiz"),productId:selectedProduct.id,productName:sanitizeText(selectedProduct.name),productType:selectedProduct.type,fapCost:cost,addressDetails:sanitizeText(orderAddress||"Dijital"),status:"Onay Bekliyor",createdAt:serverTimestamp()}).catch(handleFirebaseError);setCurrentUser(prev=>prev?{...prev,fapCoin:newBal}:null);alert("Siparişiniz alındı!");setSelectedProduct(null);setOrderAddress("");}catch(err){handleFirebaseError(err);alert("Sipariş oluşturulamadı.");}finally{setIsOrdering(false);}};
 
   /*
