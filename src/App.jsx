@@ -107,6 +107,48 @@ const SEED_COMMENTS = [
 const LIVE_STATS = { todayPlayers: 1247, totalGamesPlayed: 18934, activeNow: 342, totalUsers: 4821 };
 
 /* =========================================================================
+   EMAILjs YAPILANDIRMASI
+   ─────────────────────────────────────────────────────────────────────────
+   KURULUM (ücretsiz, 200 mail/ay):
+   1. emailjs.com → Ücretsiz hesap aç
+   2. Email Services → Gmail'i bağla → Service ID'yi kopyala
+   3. Email Templates → Yeni şablon oluştur → Template ID'yi kopyala
+   4. Account → Public Key'i kopyala
+   5. Aşağıdaki değerleri doldur
+   ========================================================================= */
+const EMAILJS_CONFIG = {
+  serviceId:  "service_XXXXXXX",    // EmailJS panelinden al
+  templateId: "template_XXXXXXX",   // EmailJS panelinden al
+  publicKey:  "XXXXXXXXXXXXXXXXXXXX", // EmailJS Account → Public Key
+  enabled: false, // Yukarıdakileri doldurduktan sonra true yap
+};
+
+// EmailJS REST API ile mail gönder (npm paketi gerektirmez)
+async function sendEmailNotification(subject, body, replyTo) {
+  if (!EMAILJS_CONFIG.enabled) return; // Yapılandırılmamışsa atla
+  try {
+    await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id:  EMAILJS_CONFIG.serviceId,
+        template_id: EMAILJS_CONFIG.templateId,
+        user_id:     EMAILJS_CONFIG.publicKey,
+        template_params: {
+          to_email: "forgeandplay@gmail.com",
+          cc_email:  "carkci.caner@gmail.com",
+          subject,
+          message: body,
+          reply_to: replyTo || "noreply@forgeandplay.com",
+        }
+      })
+    });
+  } catch (e) {
+    console.warn("Email gönderilemedi:", e);
+  }
+}
+
+/* =========================================================================
    OYUN VERİLERİ
    ========================================================================= */
 const GAMES = [
@@ -274,6 +316,14 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
+
+  // ── Canlı İstatistikler (sürekli değişen) ──────────────────────────────────
+  const [liveCounters, setLiveCounters] = useState({
+    todayPlayers: LIVE_STATS.todayPlayers,
+    totalGamesPlayed: LIVE_STATS.totalGamesPlayed,
+    activeNow: LIVE_STATS.activeNow,
+    totalUsers: LIVE_STATS.totalUsers,
+  });
   const [isRegistering, setIsRegistering] = useState(false);
   const [authError, setAuthError] = useState("");
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -335,8 +385,56 @@ export default function App() {
 
   useEffect(()=>{const h=e=>{e.preventDefault();setDeferredPrompt(e);};window.addEventListener('beforeinstallprompt',h);const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);if(ios&&!window.matchMedia('(display-mode: standalone)').matches)setIsIOS(true);return()=>window.removeEventListener('beforeinstallprompt',h);},[]);
 
+  // ── CANLI SAYAÇ — Her 4 saniyede gerçekçi artış/azalış ────────────────────
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setLiveCounters(prev => {
+        const rand = (base, min, max) => {
+          const delta = Math.floor(Math.random() * (max - min + 1)) + min;
+          return Math.max(base * 0.85, prev[base] ? prev[base] + delta : base + delta);
+        };
+        // activeNow: ±2-8 kişi değişir (en hareketli)
+        const newActive = Math.max(280, Math.min(420,
+          prev.activeNow + (Math.floor(Math.random() * 11) - 4)
+        ));
+        // todayPlayers: sürekli artar, gece yavaş gündüz hızlı
+        const hour = new Date().getHours();
+        const playerIncrease = hour >= 9 && hour <= 23
+          ? Math.floor(Math.random() * 4)   // gündüz: 0-3
+          : Math.floor(Math.random() * 2);   // gece: 0-1
+        // totalGamesPlayed: sürekli artar
+        const gameIncrease = Math.floor(Math.random() * 6); // 0-5
+        // totalUsers: yavaş artar
+        const userIncrease = Math.random() < 0.08 ? 1 : 0; // %8 ihtimalle +1
+
+        return {
+          todayPlayers:     prev.todayPlayers + playerIncrease,
+          totalGamesPlayed: prev.totalGamesPlayed + gameIncrease,
+          activeNow:        newActive,
+          totalUsers:       prev.totalUsers + userIncrease,
+        };
+      });
+    }, 4000);
+    return () => clearInterval(iv);
+  }, []);
+
   // Auth listener
-  useEffect(()=>{if(!auth)return;let unsubUser=null,mounted=true;const unsubAuth=onAuthStateChanged(auth,async fbUser=>{if(!mounted)return;if(fbUser){try{const ref=doc(db,"users",fbUser.uid);unsubUser=onSnapshot(ref,async snap=>{if(!mounted)return;const email=String(fbUser.email||"").toLowerCase().trim();const adminMail=ADMIN_EMAILS.includes(email);if(snap.exists()){const data=snap.data();const upd={};if(adminMail&&data.role!=="admin"){upd.role="admin";upd.premiumEndDate=new Date("2099-01-01").toISOString();}if(!data.paymentCode)upd.paymentCode="FP-"+fbUser.uid.substring(0,4).toUpperCase();if(data.fapCoin===undefined)upd.fapCoin=0;if(data.dailyFap===undefined)upd.dailyFap=0;if(data.lastFapDate===undefined)upd.lastFapDate="";if(Object.keys(upd).length)await updateDoc(ref,upd).catch(handleFirebaseError);if(mounted)setCurrentUser({id:fbUser.uid,email,...data,...upd});}else{const pc="FP-"+fbUser.uid.substring(0,4).toUpperCase();const safeName=sanitizeText(fbUser.displayName||email.split("@")[0]||"Oyuncu").substring(0,50);const nu={name:safeName,email,role:adminMail?"admin":"user",premiumEndDate:adminMail?new Date("2099-01-01").toISOString():null,pendingRequest:null,playCount:0,premiumTrialsUsed:0,gamePlayCounts:{},fapCoin:0,dailyFap:0,lastFapDate:"",paymentCode:pc,createdAt:serverTimestamp(),lastLogin:serverTimestamp()};await setDoc(ref,nu).catch(handleFirebaseError);if(mounted)setCurrentUser({id:fbUser.uid,...nu});}if(mounted)setAuthLoading(false);},err=>{handleFirebaseError(err);if(mounted)setAuthLoading(false);});}catch(err){handleFirebaseError(err);if(mounted)setAuthLoading(false);}}else{if(mounted){setCurrentUser(null);setAuthLoading(false);}}});return()=>{mounted=false;unsubAuth();if(unsubUser)unsubUser();};},[handleFirebaseError]);
+  useEffect(()=>{if(!auth)return;let unsubUser=null,mounted=true;const unsubAuth=onAuthStateChanged(auth,async fbUser=>{if(!mounted)return;if(fbUser){try{const ref=doc(db,"users",fbUser.uid);unsubUser=onSnapshot(ref,async snap=>{if(!mounted)return;const email=String(fbUser.email||"").toLowerCase().trim();const adminMail=ADMIN_EMAILS.includes(email);if(snap.exists()){const data=snap.data();const upd={};if(adminMail&&data.role!=="admin"){upd.role="admin";upd.premiumEndDate=new Date("2099-01-01").toISOString();}if(!data.paymentCode)upd.paymentCode="FP-"+fbUser.uid.substring(0,4).toUpperCase();if(data.fapCoin===undefined)upd.fapCoin=0;if(data.dailyFap===undefined)upd.dailyFap=0;if(data.lastFapDate===undefined)upd.lastFapDate="";if(Object.keys(upd).length)await updateDoc(ref,upd).catch(handleFirebaseError);if(mounted)setCurrentUser({id:fbUser.uid,email,...data,...upd});}else{
+        // ── YENİ KULLANICI oluşturuluyor ──────────────────────────────────────
+        const pc="FP-"+fbUser.uid.substring(0,4).toUpperCase();
+        const safeName=sanitizeText(fbUser.displayName||email.split("@")[0]||"Oyuncu").substring(0,50);
+        const nu={name:safeName,email,role:adminMail?"admin":"user",premiumEndDate:adminMail?new Date("2099-01-01").toISOString():null,pendingRequest:null,playCount:0,premiumTrialsUsed:0,gamePlayCounts:{},fapCoin:0,dailyFap:0,lastFapDate:"",paymentCode:pc,createdAt:serverTimestamp(),lastLogin:serverTimestamp()};
+        await setDoc(ref,nu).catch(handleFirebaseError);
+        if(mounted)setCurrentUser({id:fbUser.uid,...nu});
+        // 📧 Admin'e yeni üye bildirimi
+        if(!adminMail) {
+          sendEmailNotification(
+            `🆕 Yeni Üye: ${safeName}`,
+            `Yeni bir kullanıcı Forge&Play'e katıldı!\n\nİsim: ${safeName}\nE-posta: ${email}\nKod: ${pc}\nTarih: ${new Date().toLocaleString('tr-TR')}\n\nAdmin panelinden görüntüleyebilirsiniz.`,
+            email
+          );
+        }
+      }if(mounted)setAuthLoading(false);},err=>{handleFirebaseError(err);if(mounted)setAuthLoading(false);});}catch(err){handleFirebaseError(err);if(mounted)setAuthLoading(false);}}else{if(mounted){setCurrentUser(null);setAuthLoading(false);}}});return()=>{mounted=false;unsubAuth();if(unsubUser)unsubUser();};},[handleFirebaseError]);
 
   // Firestore listeners
   useEffect(()=>{
@@ -389,7 +487,23 @@ export default function App() {
   // ── GAME LOGIC ────────────────────────────────────────────────────────────────
   const proceedToGame=useCallback((game,isTrial=false)=>{setTrialPromptGame(null);setPlayingGame(game);if(playTimerRef.current)clearTimeout(playTimerRef.current);playTimerRef.current=setTimeout(async()=>{if(currentUser){try{const gc={...(currentUser.gamePlayCounts||{})};gc[game.id]=(Number(gc[game.id])||0)+1;const upd={playCount:(Number(currentUser.playCount)||0)+1,lastPlayedGameName:game.title,lastPlayed:serverTimestamp(),gamePlayCounts:gc};if(isTrial)upd.premiumTrialsUsed=(Number(currentUser.premiumTrialsUsed)||0)+1;await updateDoc(doc(db,"users",currentUser.id),upd).catch(handleFirebaseError);setCurrentUser(prev=>prev?({...prev,playCount:(Number(prev.playCount)||0)+1,lastPlayedGameName:game.title,gamePlayCounts:gc,premiumTrialsUsed:isTrial?(Number(prev.premiumTrialsUsed)||0)+1:prev.premiumTrialsUsed}):null);}catch(e){handleFirebaseError(e);}}},[60000]);if(currentUser&&isUserPremium(currentUser))startFapTimer();},[currentUser,handleFirebaseError,startFapTimer]);
 
-  const openGame=useCallback(game=>{if(!game)return;if(!game.url){alert("Bu oyun henüz yayında değil.");return;}if(game.requiresPremium&&!isUserPremium(currentUser)){if(!currentUser){setShowLoginModal(true);return;}const t=Number(currentUser?.premiumTrialsUsed||0);if(t>=3){setPremiumWarningGame(game);return;}setTrialPromptGame(game);return;}proceedToGame(game,false);},[currentUser,proceedToGame]);
+  const openGame=useCallback(game=>{
+    if(!game)return;
+    if(!game.url){alert("Bu oyun henüz yayında değil.");return;}
+    if(game.requiresPremium){
+      // Premium kontrolü — geçici premium dahil
+      if(isUserPremium(currentUser)){
+        // Premium var (gerçek veya geçici) → direkt oyna
+        proceedToGame(game,false);
+        return;
+      }
+      if(!currentUser){setShowLoginModal(true);return;}
+      const t=Number(currentUser?.premiumTrialsUsed||0);
+      if(t>=3){setPremiumWarningGame(game);return;}
+      setTrialPromptGame(game);return;
+    }
+    proceedToGame(game,false);
+  },[currentUser,proceedToGame]);
 
   const closeGame=useCallback(()=>{setPlayingGame(null);if(playTimerRef.current)clearTimeout(playTimerRef.current);stopFapTimer();if(document.fullscreenElement)document.exitFullscreen?.().catch(()=>{});},[stopFapTimer]);
 
@@ -499,6 +613,13 @@ export default function App() {
       // Shopier sayfasını aç
       window.open(shopierUrl, "_blank", "noopener,noreferrer");
       setPaymentIntent(null);
+
+      // 📧 Admin'e premium talebi bildirimi
+      sendEmailNotification(
+        `💳 Premium Talebi: ${currentUser.name} — ${plan}`,
+        `Bir kullanıcı premium satın almaya yönlendi!\n\nİsim: ${currentUser.name}\nE-posta: ${currentUser.email}\nShopier Kodu: ${currentUser.paymentCode}\nPlan: ${plan}\nGeçici Süre: ${tempLabel}\nTarih: ${new Date().toLocaleString('tr-TR')}\nZaman: ${isNight?"🌙 Gece":"☀️ Gündüz"}\n\nAdmin paneli → Ödemeler sekmesinden takip edebilirsiniz.`,
+        currentUser.email
+      );
 
       // Kullanıcıya bilgi ver
       const msg = isNight
@@ -871,16 +992,12 @@ export default function App() {
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/8 rounded-full blur-3xl translate-x-1/3 -translate-y-1/3"/>
             <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/8 rounded-full blur-3xl -translate-x-1/3 translate-y-1/3"/>
-            {/* Floating game icons */}
-            <div className="absolute top-8 right-12 w-16 h-16 bg-slate-800/60 rounded-2xl border border-slate-700/50 flex items-center justify-center backdrop-blur-sm animate-bounce" style={{animationDelay:'0s',animationDuration:'3s'}}><Gamepad2 className="w-8 h-8 text-orange-400"/></div>
-            <div className="absolute top-1/3 right-1/4 w-12 h-12 bg-slate-800/60 rounded-2xl border border-slate-700/50 flex items-center justify-center backdrop-blur-sm animate-bounce" style={{animationDelay:'.8s',animationDuration:'4s'}}><Trophy className="w-6 h-6 text-amber-400"/></div>
-            <div className="absolute bottom-16 right-20 w-14 h-14 bg-slate-800/60 rounded-2xl border border-slate-700/50 flex items-center justify-center backdrop-blur-sm animate-bounce" style={{animationDelay:'1.5s',animationDuration:'3.5s'}}><Star className="w-7 h-7 text-purple-400"/></div>
           </div>
           <div className="relative z-10 px-6 md:px-12 py-16 max-w-3xl">
             <div className="flex items-center gap-2 mb-5">
               <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/25 px-3 py-1.5 rounded-full">
                 <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"/>
-                <span className="text-emerald-400 text-xs font-bold">{LIVE_STATS.activeNow} kişi şu an oynuyor</span>
+                <span className="text-emerald-400 text-xs font-bold">{liveCounters.activeNow} kişi şu an oynuyor</span>
               </div>
               <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 rounded-full">
                 <Flame className="w-3 h-3 text-orange-400"/>
@@ -906,7 +1023,7 @@ export default function App() {
             {/* Güven rozeti */}
             <div className="flex items-center gap-4 mt-8 flex-wrap">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs"><Shield className="w-3.5 h-3.5 text-emerald-400"/> Güvenli Bağlantı (SSL)</div>
-              <div className="flex items-center gap-1.5 text-slate-400 text-xs"><Users className="w-3.5 h-3.5 text-blue-400"/> {LIVE_STATS.totalUsers.toLocaleString('tr-TR')}+ Üye</div>
+              <div className="flex items-center gap-1.5 text-slate-400 text-xs"><Users className="w-3.5 h-3.5 text-blue-400"/> {liveCounters.totalUsers.toLocaleString('tr-TR')}+ Üye</div>
               <div className="flex items-center gap-1.5 text-slate-400 text-xs"><Star className="w-3.5 h-3.5 text-amber-400"/> 4.9/5 Değerlendirme</div>
             </div>
           </div>
@@ -916,10 +1033,10 @@ export default function App() {
         <section>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              {icon:Users,val:LIVE_STATS.todayPlayers.toLocaleString('tr-TR'),label:"Bugün Oynayan",color:"text-blue-400",bg:"bg-blue-500/10"},
-              {icon:Gamepad2,val:LIVE_STATS.totalGamesPlayed.toLocaleString('tr-TR'),label:"Oynanan Oyun",color:"text-emerald-400",bg:"bg-emerald-500/10"},
-              {icon:Flame,val:LIVE_STATS.activeNow.toString(),label:"Şu An Aktif",color:"text-orange-400",bg:"bg-orange-500/10"},
-              {icon:Award,val:LIVE_STATS.totalUsers.toLocaleString('tr-TR')+"+",label:"Toplam Üye",color:"text-purple-400",bg:"bg-purple-500/10"},
+              {icon:Users,val:liveCounters.todayPlayers.toLocaleString('tr-TR'),label:"Bugün Oynayan",color:"text-blue-400",bg:"bg-blue-500/10"},
+              {icon:Gamepad2,val:liveCounters.totalGamesPlayed.toLocaleString('tr-TR'),label:"Oynanan Oyun",color:"text-emerald-400",bg:"bg-emerald-500/10"},
+              {icon:Flame,val:liveCounters.activeNow.toString(),label:"Şu An Aktif",color:"text-orange-400",bg:"bg-orange-500/10"},
+              {icon:Award,val:liveCounters.totalUsers.toLocaleString('tr-TR')+"+",label:"Toplam Üye",color:"text-purple-400",bg:"bg-purple-500/10"},
             ].map((s,i)=>{const Icon=s.icon;return(
               <div key={i} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-4 hover:border-slate-700 transition-colors">
                 <div className={`w-12 h-12 ${s.bg} rounded-xl flex items-center justify-center shrink-0`}><Icon className={`w-6 h-6 ${s.color}`}/></div>
@@ -1285,7 +1402,16 @@ export default function App() {
                 <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl p-4"><Mail className="w-5 h-5 text-orange-400 shrink-0"/><div><div className="text-xs font-bold text-slate-500 uppercase">E-posta</div><a href="mailto:forgeandplay@gmail.com" className="text-sm text-white hover:text-orange-400">forgeandplay@gmail.com</a></div></div>
                 <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl p-4"><Instagram className="w-5 h-5 text-pink-400 shrink-0"/><div><div className="text-xs font-bold text-slate-500 uppercase">Instagram</div><a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" className="text-sm text-white hover:text-pink-400">@forgeandplayshop</a></div></div>
               </div>
-              <form onSubmit={e=>{e.preventDefault();if(!contactForm.name||!contactForm.email||!contactForm.message){alert("Tüm alanları doldurun.");return;}setContactSent(true);}} className="space-y-4">
+              <form onSubmit={async e=>{e.preventDefault();if(!contactForm.name||!contactForm.email||!contactForm.message){alert("Tüm alanları doldurun.");return;}
+                // Firestore'a kaydet
+                if(db) await addDoc(collection(db,"contact_messages"),{name:sanitizeText(contactForm.name),email:String(contactForm.email),message:sanitizeText(contactForm.message),createdAt:serverTimestamp()}).catch(()=>{});
+                // Email gönder
+                await sendEmailNotification(
+                  `📬 İletişim Formu: ${sanitizeText(contactForm.name)}`,
+                  `Siteden yeni bir iletişim mesajı:\n\nİsim: ${sanitizeText(contactForm.name)}\nE-posta: ${contactForm.email}\nMesaj:\n${sanitizeText(contactForm.message)}\n\nTarih: ${new Date().toLocaleString('tr-TR')}`,
+                  contactForm.email
+                );
+                setContactSent(true);}} className="space-y-4">
                 <div><label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Adınız</label><input required value={contactForm.name} onChange={e=>setContactForm(p=>({...p,name:e.target.value}))} placeholder="Adınız Soyadınız" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500"/></div>
                 <div><label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">E-posta</label><input required type="email" value={contactForm.email} onChange={e=>setContactForm(p=>({...p,email:e.target.value}))} placeholder="ornek@email.com" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500"/></div>
                 <div><label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Mesajınız</label><textarea required value={contactForm.message} onChange={e=>setContactForm(p=>({...p,message:e.target.value}))} placeholder="Size nasıl yardımcı olabiliriz?" rows={4} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 resize-none"/></div>
