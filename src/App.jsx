@@ -21,7 +21,8 @@ import {
 } from "firebase/auth";
 import {
   getFirestore, collection, onSnapshot, doc, setDoc, updateDoc,
-  addDoc, deleteDoc, query, orderBy, serverTimestamp, increment, getDoc
+  addDoc, deleteDoc, query, orderBy, serverTimestamp, increment, getDoc,
+  writeBatch, getDocs
 } from "firebase/firestore";
 
 /* =========================================================================
@@ -336,7 +337,39 @@ export default function App() {
   useEffect(()=>{if(!auth)return;let unsubUser=null,mounted=true;const unsubAuth=onAuthStateChanged(auth,async fbUser=>{if(!mounted)return;if(fbUser){try{const ref=doc(db,"users",fbUser.uid);unsubUser=onSnapshot(ref,async snap=>{if(!mounted)return;const email=String(fbUser.email||"").toLowerCase().trim();const adminMail=ADMIN_EMAILS.includes(email);if(snap.exists()){const data=snap.data();const upd={};if(adminMail&&data.role!=="admin"){upd.role="admin";upd.premiumEndDate=new Date("2099-01-01").toISOString();}if(!data.paymentCode)upd.paymentCode="FP-"+fbUser.uid.substring(0,4).toUpperCase();if(data.fapCoin===undefined)upd.fapCoin=0;if(data.dailyFap===undefined)upd.dailyFap=0;if(data.lastFapDate===undefined)upd.lastFapDate="";if(Object.keys(upd).length)await updateDoc(ref,upd).catch(handleFirebaseError);if(mounted)setCurrentUser({id:fbUser.uid,email,...data,...upd});}else{const pc="FP-"+fbUser.uid.substring(0,4).toUpperCase();const safeName=sanitizeText(fbUser.displayName||email.split("@")[0]||"Oyuncu").substring(0,50);const nu={name:safeName,email,role:adminMail?"admin":"user",premiumEndDate:adminMail?new Date("2099-01-01").toISOString():null,pendingRequest:null,playCount:0,premiumTrialsUsed:0,gamePlayCounts:{},fapCoin:0,dailyFap:0,lastFapDate:"",paymentCode:pc,createdAt:serverTimestamp(),lastLogin:serverTimestamp()};await setDoc(ref,nu).catch(handleFirebaseError);if(mounted)setCurrentUser({id:fbUser.uid,...nu});}if(mounted)setAuthLoading(false);},err=>{handleFirebaseError(err);if(mounted)setAuthLoading(false);});}catch(err){handleFirebaseError(err);if(mounted)setAuthLoading(false);}}else{if(mounted){setCurrentUser(null);setAuthLoading(false);}}});return()=>{mounted=false;unsubAuth();if(unsubUser)unsubUser();};},[handleFirebaseError]);
 
   // Firestore listeners
-  useEffect(()=>{if(!db)return;setStoreLoading(true);const unsubProducts=onSnapshot(collection(db,"store_products"),snap=>{const prods=snap.docs.map(d=>({id:d.id,...d.data()}));prods.sort((a,b)=>{const at=a.createdAt?.seconds??0,bt=b.createdAt?.seconds??0;return bt-at;});setStoreProducts(prods);setStoreLoading(false);},err=>{handleFirebaseError(err);setStoreLoading(false);});
+  useEffect(()=>{
+    if(!db)return;
+    setStoreLoading(true);
+
+    /*
+     * ─── STORE_PRODUCTS LISTENER ──────────────────────────────────────────────
+     * Bu listener Firestore'daki gerçek veriyi dinler.
+     * Eğer ürün Firestore'dan gerçekten silinmişse buraya boş gelir.
+     * Eğer silme sonrası ürün geri geliyorsa → Firestore Rules izin vermiyordur.
+     * Gerekli Firestore Rules:
+     *   match /store_products/{id} { allow read, write: if true; }
+     */
+    const unsubProducts = onSnapshot(
+      collection(db, "store_products"),
+      snap => {
+        // DEBUG: Firestore'un gerçekte ne gönderdiğini görmek için
+        console.log("store_products snapshot:", snap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+        const prods = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        prods.sort((a, b) => {
+          const at = a.createdAt?.seconds ?? 0;
+          const bt = b.createdAt?.seconds ?? 0;
+          return bt - at;
+        });
+        setStoreProducts(prods);
+        setStoreLoading(false);
+      },
+      err => {
+        console.error("store_products onSnapshot error:", err);
+        handleFirebaseError(err);
+        setStoreLoading(false);
+      }
+    );
     const unsubFeedbacks=onSnapshot(query(collection(db,"feedbacks"),orderBy("createdAt","desc")),snap=>{setFeedbacks(snap.docs.map(d=>{const data=d.data();let date=new Date().toISOString();if(data.createdAt?.toDate)date=data.createdAt.toDate().toISOString();return{id:d.id,...data,createdAt:date};}));},handleFirebaseError);
     let unsubUsers=null,unsubOrders=null;
     if(isAdmin){unsubUsers=onSnapshot(collection(db,"users"),snap=>setUsersList(snap.docs.map(d=>({id:d.id,...d.data()}))),handleFirebaseError);unsubOrders=onSnapshot(query(collection(db,"orders"),orderBy("createdAt","desc")),snap=>{setOrdersList(snap.docs.map(d=>{const data=d.data();let dt=new Date().toLocaleDateString('tr-TR');if(data.createdAt?.toDate){const dd=data.createdAt.toDate();dt=dd.toLocaleDateString('tr-TR')+" "+dd.toLocaleTimeString('tr-TR');}return{id:d.id,...data,displayDate:dt};}));},handleFirebaseError);}
@@ -374,10 +407,31 @@ export default function App() {
   const handleFeedbackSubmit=async data=>{if(!currentUser)return;setIsSubmittingFeedback(true);try{await addDoc(collection(db,"feedbacks"),{text:sanitizeText(data.text),game:sanitizeText(data.game),userId:currentUser.id,user:sanitizeText(currentUser.name||currentUser.email),email:String(currentUser.email),status:"beklemede",createdAt:serverTimestamp(),date:new Date().toLocaleDateString('tr-TR')}).catch(handleFirebaseError);alert("Geri bildiriminiz gönderildi!");}catch{alert("Gönderilemedi.");}finally{setIsSubmittingFeedback(false);}};
   const handleRewardPurchase=async e=>{e.preventDefault();if(!currentUser||!selectedProduct)return;const balance=Number(currentUser.fapCoin||0);const cost=Number(selectedProduct.price||0);if(balance<cost){alert(`Yetersiz FAP Coin!\nBakiye: ${balance.toFixed(1)}\nGerekli: ${cost}`);return;}if(selectedProduct.type==="Fiziksel"&&!orderAddress.trim()){alert("Adres zorunludur.");return;}setIsOrdering(true);try{const newBal=balance-cost;await updateDoc(doc(db,"users",currentUser.id),{fapCoin:newBal}).catch(handleFirebaseError);await addDoc(collection(db,"orders"),{userId:currentUser.id,userEmail:String(currentUser.email),userName:sanitizeText(currentUser.name||"İsimsiz"),productId:selectedProduct.id,productName:sanitizeText(selectedProduct.name),productType:selectedProduct.type,fapCost:cost,addressDetails:sanitizeText(orderAddress||"Dijital"),status:"Onay Bekliyor",createdAt:serverTimestamp()}).catch(handleFirebaseError);setCurrentUser(prev=>prev?{...prev,fapCoin:newBal}:null);alert("Siparişiniz alındı!");setSelectedProduct(null);setOrderAddress("");}catch(err){handleFirebaseError(err);alert("Sipariş oluşturulamadı.");}finally{setIsOrdering(false);}};
 
-  // ── CRUD (REST API + SDK fallback) ─────────────────────────────────────────────
-  // ─── ÜRÜN CRUD — Saf Firebase SDK (ChatGPT yöntemi: Promise.all) ──────────────
+  /*
+   * ════════════════════════════════════════════════════════════════════════════
+   * STORE_PRODUCTS CRUD — SADECE FIREBASE SDK
+   * REST API, callFirestoreAPI, UI-only state manipulation YOK.
+   *
+   * NEDEN ÜRÜNLER GERİ GELİYORDU?
+   * ─────────────────────────────
+   * Önceki kodda clearAllProducts() içinde setStoreProducts([]) ile sadece
+   * React state temizleniyordu. Firestore'dan hiç silinmiyordu.
+   * onSnapshot dinleyicisi aktif olduğu için sayfa yenilenince veya
+   * başka bir kullanıcı bağlandığında Firestore'daki gerçek veriyi
+   * tekrar çekip UI'ı dolduruyor — bu yüzden ürünler "geri geliyordu".
+   *
+   * ÇÖZÜM: Tüm silme işlemlerini önce Firestore'a yaz,
+   * UI güncellemesini onSnapshot'a bırak. Hiçbir yerde setStoreProducts([])
+   * ya da UI-only state manipülasyonu yapılmıyor.
+   *
+   * GEREKLİ FIRESTORE RULES:
+   *   match /store_products/{id} {
+   *     allow read, write: if true;
+   *   }
+   * ════════════════════════════════════════════════════════════════════════════
+   */
 
-  // ➕ ÜRÜN EKLE veya GÜNCELLE
+  // ─── ÜRÜN EKLE / GÜNCELLE ────────────────────────────────────────────────────
   const saveProduct = async e => {
     e.preventDefault();
     const cid = editingProductIdRef.current;
@@ -389,7 +443,7 @@ export default function App() {
     if (isNaN(price) || price <= 0 || price > 100000) {
       alert("Geçerli bir fiyat girin (1-100.000)."); return;
     }
-    if (!newProductData.image.startsWith('http')) {
+    if (!newProductData.image.startsWith("http")) {
       alert("Görsel URL'i http:// ile başlamalıdır."); return;
     }
 
@@ -404,7 +458,7 @@ export default function App() {
 
     try {
       if (cid) {
-        // Güncelle — setDoc ile mevcut dokümanı yaz
+        // Güncelleme: mevcut dokümanı setDoc ile üzerine yaz
         const existing = storeProducts.find(p => p.id === cid);
         await setDoc(doc(db, "store_products", cid), {
           ...prod,
@@ -412,92 +466,167 @@ export default function App() {
         });
         alert(`✓ "${prod.name}" güncellendi!`);
       } else {
-        // Yeni ekle
+        // Yeni ürün: addDoc ile Firestore'a yaz
         await addDoc(collection(db, "store_products"), {
           ...prod,
           createdAt: serverTimestamp(),
         });
         alert(`✓ "${prod.name}" eklendi!`);
       }
-      setNewProductData({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
+      // Formu temizle — UI onSnapshot üzerinden güncellenir
+      setNewProductData({ name:"", price:"", image:"", desc:"", type:"Dijital", isVisible:true });
       setEditingProductId(null);
       editingProductIdRef.current = null;
     } catch (err) {
       console.error("saveProduct error:", err);
       alert(
-        `❌ Hata: ${err?.code || err?.message}\n\n` +
-        `Firestore Rules güncellenmemiş olabilir.\n` +
+        `❌ Kaydedilemedi!\nHata: ${err?.code || err?.message}\n\n` +
         `Firebase Console → Firestore → Rules:\n` +
         `match /store_products/{id} { allow read, write: if true; }`
       );
     }
   };
 
-  // ✏️ DÜZENLEME MODUNU AÇ
+  // ─── DÜZENLEME BAŞLAT ────────────────────────────────────────────────────────
   const editProduct = prod => {
-    if (!prod.id) return;
+    if (!prod?.id) return;
     setEditingProductId(prod.id);
     editingProductIdRef.current = prod.id;
     setNewProductData({
-      name: prod.name || '',
-      price: String(prod.price || ''),
-      image: prod.image || '',
-      desc: prod.desc || '',
-      type: prod.type || 'Dijital',
+      name: prod.name || "",
+      price: String(prod.price || ""),
+      image: prod.image || "",
+      desc: prod.desc || "",
+      type: prod.type || "Dijital",
       isVisible: prod.isVisible !== false,
     });
-    document.getElementById('pfs')?.scrollIntoView({ behavior:'smooth', block:'start' });
+    document.getElementById("pfs")?.scrollIntoView({ behavior:"smooth", block:"start" });
   };
 
-  // ✖️ DÜZENLEME İPTAL
+  // ─── DÜZENLEME İPTAL ─────────────────────────────────────────────────────────
   const cancelEdit = () => {
     setEditingProductId(null);
     editingProductIdRef.current = null;
-    setNewProductData({ name:'', price:'', image:'', desc:'', type:'Dijital', isVisible:true });
+    setNewProductData({ name:"", price:"", image:"", desc:"", type:"Dijital", isVisible:true });
   };
 
-  // 👁️ GÖRÜNÜRLEŞTİR / GİZLE
+  // ─── GÖRÜNÜRLEŞTİR / GİZLE ──────────────────────────────────────────────────
   const toggleVis = async (id, vis) => {
     if (!id) return;
     try {
+      // updateDoc: sadece isVisible alanını değiştir
       await updateDoc(doc(db, "store_products", id), { isVisible: !vis });
+      // UI onSnapshot üzerinden güncellenir
     } catch (err) {
       console.error("toggleVis error:", err);
-      alert("Hata: " + (err?.code || err?.message));
+      alert("Görünürlük değiştirilemedi: " + (err?.code || err?.message));
     }
   };
 
-  // ❌ TEK ÜRÜN SİL
+  // ─── TEK ÜRÜN SİL ────────────────────────────────────────────────────────────
   const deleteProduct = async id => {
-    if (!id) return;
-    if (!window.confirm("Bu ürünü silmek istiyor musunuz?")) return;
+    // Temel validasyon
+    if (!id) {
+      alert("Ürün ID'si bulunamadı.");
+      return;
+    }
+
+    if (!window.confirm("Bu ürünü kalıcı olarak silmek istiyor musunuz?")) return;
+
     try {
+      // Firestore'dan gerçekten sil
       await deleteDoc(doc(db, "store_products", id));
+
+      // Silme doğrulaması: doküman hâlâ var mı kontrol et
+      const check = await getDoc(doc(db, "store_products", id));
+      if (check.exists()) {
+        // Silme başarısız olmuş (rules veya network sorunu)
+        console.error("deleteProduct: doc still exists after delete!", id);
+        alert(
+          "❌ Ürün silinemedi — Firestore'da hâlâ mevcut.\n\n" +
+          "Firebase Console → Firestore → Rules'u kontrol edin:\n" +
+          "match /store_products/{id} { allow delete: if true; }"
+        );
+        return;
+      }
+
+      // Başarılı — UI onSnapshot tarafından otomatik güncellenir
+      console.log("deleteProduct: successfully deleted", id);
     } catch (err) {
-      console.error("deleteProduct error:", err);
-      alert("Silinemedi: " + (err?.code || err?.message));
+      console.error("deleteProduct error:", err.code, err.message);
+      alert(
+        `❌ Silinemedi!\nHata kodu: ${err?.code}\nMesaj: ${err?.message}\n\n` +
+        `Firebase Console → Firestore → Rules:\n` +
+        `match /store_products/{id} { allow read, write: if true; }`
+      );
     }
   };
 
-  // 💣 TÜMÜNÜ SİL — Promise.all ile paralel (ChatGPT yöntemi)
+  // ─── TÜMÜNÜ SİL — writeBatch ile atomik toplu silme ─────────────────────────
   const clearAllProducts = async () => {
-    if (!storeProducts.length) { alert("Mağaza zaten boş."); return; }
-    if (!window.confirm(`⚠️ ${storeProducts.length} ürünün TAMAMI silinecek. Geri alınamaz!`)) return;
+    if (!storeProducts.length) {
+      alert("Mağaza zaten boş.");
+      return;
+    }
+    if (!window.confirm(
+      `⚠️ ${storeProducts.length} ürünün TAMAMI Firestore'dan kalıcı olarak silinecek!\nGeri alınamaz. Devam edilsin mi?`
+    )) return;
 
     try {
-      // Tüm silme işlemlerini paralel başlat
-      const deletePromises = storeProducts
-        .filter(p => p.id)
-        .map(p => deleteDoc(doc(db, "store_products", p.id)));
+      /*
+       * writeBatch: tüm silme işlemlerini tek bir atomik işlemde Firestore'a gönderir.
+       * Firestore batch limiti 500 doc — gerekirse parçalıyoruz.
+       */
+      const BATCH_LIMIT = 400;
+      const allDocs = await getDocs(collection(db, "store_products"));
 
-      await Promise.all(deletePromises);
+      if (allDocs.empty) {
+        alert("Firestore'da zaten ürün yok.");
+        return;
+      }
 
-      // UI garantili sıfırla
-      setStoreProducts([]);
-      alert(`✓ ${deletePromises.length} ürün silindi!`);
+      // 400'lük parçalara böl
+      const chunks = [];
+      let current = [];
+      allDocs.docs.forEach(d => {
+        current.push(d);
+        if (current.length === BATCH_LIMIT) {
+          chunks.push(current);
+          current = [];
+        }
+      });
+      if (current.length) chunks.push(current);
+
+      // Her chunk için bir batch commit
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+
+      // Doğrulama: Firestore'da ürün kalmamış olmalı
+      const verify = await getDocs(collection(db, "store_products"));
+      if (!verify.empty) {
+        const remaining = verify.docs.map(d => d.id).join(", ");
+        console.error("clearAllProducts: still has docs after batch delete:", remaining);
+        alert(
+          `⚠️ Bazı ürünler silinemedi (${verify.size} adet kaldı).\n` +
+          `Firestore Rules'u kontrol edin.\nKalan ID'ler: ${remaining}`
+        );
+        return;
+      }
+
+      // Başarılı — UI onSnapshot tarafından otomatik boşaltılır
+      console.log(`clearAllProducts: all ${allDocs.size} docs successfully deleted from Firestore`);
+      alert(`✓ ${allDocs.size} ürün Firestore'dan kalıcı olarak silindi!`);
+
     } catch (err) {
-      console.error("clearAllProducts error:", err);
-      alert("Toplu silme hatası: " + (err?.code || err?.message));
+      console.error("clearAllProducts error:", err.code, err.message);
+      alert(
+        `❌ Toplu silme başarısız!\nHata: ${err?.code} — ${err?.message}\n\n` +
+        `Firebase Console → Firestore → Rules:\n` +
+        `match /store_products/{id} { allow read, write: if true; }`
+      );
     }
   };
 
@@ -1418,12 +1547,164 @@ export default function App() {
   // ── ADMIN PANELİ ─────────────────────────────────────────────────────────────────
   const renderAdminDashboard = () => (
     <div className="space-y-6">
+      {/* Header */}
       <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-5 md:p-7 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div><div className="flex items-center gap-2.5 mb-1"><Lock className="w-5 h-5 text-amber-500"/><h2 className="text-xl font-bold text-white">Yönetici Paneli</h2></div><p className="text-amber-200/50 text-xs">Sadece kuruculara özel · {usersList.length} kullanıcı · {storeProducts.length} ürün · {ordersList.length} sipariş</p></div>
-        <div className="flex flex-wrap bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">{[{id:"users",l:"Kullanıcılar"},{id:"orders",l:"Siparişler"},{id:"products",l:"Mağaza"},{id:"feedbacks",l:"Fikirler"},{id:"test",l:"Test"}].map(t=><button key={t.id} onClick={()=>setAdminTab(t.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${adminTab===t.id?"bg-amber-500 text-slate-950":"text-slate-400 hover:text-white"}`}>{t.l}</button>)}</div>
+        <div>
+          <div className="flex items-center gap-2.5 mb-1"><Lock className="w-5 h-5 text-amber-500"/><h2 className="text-xl font-bold text-white">Yönetici Paneli</h2></div>
+          <p className="text-amber-200/50 text-xs">Sadece kuruculara özel · {usersList.length} kullanıcı · {storeProducts.length} ürün · {ordersList.filter(o=>o.status==="Onay Bekliyor").length} bekleyen ödeme</p>
+        </div>
+        <div className="flex flex-wrap bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
+          {[{id:"payments",l:"💳 Ödemeler"},{id:"users",l:"Kullanıcılar"},{id:"orders",l:"Siparişler"},{id:"products",l:"Mağaza"},{id:"feedbacks",l:"Fikirler"},{id:"test",l:"Test"}].map(t=>(
+            <button key={t.id} onClick={()=>setAdminTab(t.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${adminTab===t.id?"bg-amber-500 text-slate-950":"text-slate-400 hover:text-white"}`}>{t.l}</button>
+          ))}
+        </div>
       </div>
-      {/* Users */}
-      {adminTab==="users"&&<div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden"><div className="px-5 py-3.5 border-b border-slate-800 flex justify-between items-center bg-slate-950/40 gap-3"><span className="font-bold text-white text-sm">Kullanıcılar ({usersList.length})</span><div className="flex items-center bg-slate-900 border border-slate-800 rounded-full px-3 py-1.5 gap-2"><Search className="w-3.5 h-3.5 text-slate-500"/><input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Ara..." className="bg-transparent outline-none text-xs text-white w-32 md:w-48"/></div></div><div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="bg-slate-900 text-slate-500 text-[10px] uppercase border-b border-slate-800"><th className="px-5 py-3">Kullanıcı</th><th className="px-5 py-3 text-center">Seviye</th><th className="px-5 py-3 text-center">Durum</th><th className="px-5 py-3 text-right">İşlem</th></tr></thead><tbody className="divide-y divide-slate-800/40">{sortedUsers.map(u=>{const up=isUserPremium(u);const rem=getRemainingDays(u.premiumEndDate);const pend=!!u.pendingRequest;const lv=getLevel(u.playCount);return<tr key={u.id} className={`hover:bg-slate-800/25 transition-colors ${pend?"bg-amber-950/15":""}`}><td className="px-5 py-3"><div className="flex items-center gap-2"><div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(u.name)} flex items-center justify-center text-xs font-black text-white`}>{String(u.name||"U").charAt(0).toUpperCase()}</div><div><div className="text-sm font-medium text-white">{u.name||"Kullanıcı"}</div><div className="text-[10px] text-slate-500">{u.email}</div></div></div></td><td className="px-5 py-3 text-center"><div className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${lv.bg} ${lv.color}`}>{lv.icon} {lv.name}</div></td><td className="px-5 py-3 text-center"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pend?"bg-amber-500/20 text-amber-400 animate-pulse":up?"bg-emerald-500/20 text-emerald-400":"bg-slate-800 text-slate-500"}`}>{pend?`ÖDEME (${u.pendingRequest})`:up?`AKTİF ${rem}g`:"STANDART"}</span></td><td className="px-5 py-3 text-right"><div className="flex items-center justify-end gap-1 flex-wrap">{pend?<><button onClick={()=>approvePremium(u.id,u.pendingRequest)} className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">Onayla</button><button onClick={()=>revokePremium(u.id)} className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">Reddet</button></>:<>{up&&<button onClick={()=>revokePremium(u.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20" title="İptal"><ShieldAlert className="w-3.5 h-3.5"/></button>}<button onClick={()=>approvePremium(u.id,"1A")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white">+1A</button><button onClick={()=>approvePremium(u.id,"6A")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-orange-900/50 text-orange-300">+6A</button><button onClick={()=>approvePremium(u.id,"1Y")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-amber-900/50 text-amber-300">+1Y</button></>}{u.role!=="admin"&&!ADMIN_EMAILS.includes(String(u.email).toLowerCase().trim())&&<button onClick={()=>deleteUser(u)} className="p-1.5 rounded-lg bg-red-900/40 text-red-400 hover:bg-red-600 hover:text-white border border-red-800/40" title="Sil"><Trash className="w-3.5 h-3.5"/></button>}</div></td></tr>;})} </tbody></table></div></div>}
+
+      {/* ═══ ÖDEMELER — Ana iş akışı ═══════════════════════════════════════════════ */}
+      {adminTab==="payments"&&(
+        <div className="space-y-5">
+          {/* Kılavuz */}
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-5">
+            <h3 className="font-bold text-white mb-3 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-blue-400"/> Ödeme Eşleştirme Kılavuzu
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="bg-slate-950 rounded-xl p-4 border border-slate-800">
+                <div className="text-blue-400 font-black text-lg mb-1">① Shopier</div>
+                <p className="text-slate-400 text-xs">Shopier panelinizde siparişi açın → Sipariş notunu görün → Kodla eşleştirin</p>
+              </div>
+              <div className="bg-slate-950 rounded-xl p-4 border border-slate-800">
+                <div className="text-amber-400 font-black text-lg mb-1">② Kodla Bul</div>
+                <p className="text-slate-400 text-xs">Aşağıdaki listede "Shopier Kodu" sütununu kullanın. Her kullanıcının benzersiz kodu var.</p>
+              </div>
+              <div className="bg-slate-950 rounded-xl p-4 border border-slate-800">
+                <div className="text-emerald-400 font-black text-lg mb-1">③ Premium Ver</div>
+                <p className="text-slate-400 text-xs">Satın aldığı plana göre +1A / +6A / +1Y butonuna basın. Anında aktifleşir.</p>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl">
+              <p className="text-orange-300 text-xs font-bold">
+                🤖 OTOMATİK ONAY: Shopier webhook'u kurmak için <code className="bg-slate-800 px-1.5 py-0.5 rounded text-orange-400">api/shopier-webhook.js</code> dosyasını deploy edin.
+                Shopier Paneli → Mağaza Ayarları → IPN/Webhook URL: <code className="bg-slate-800 px-1.5 py-0.5 rounded text-orange-400">https://forgeandplay.com/api/shopier-webhook</code>
+              </p>
+            </div>
+          </div>
+
+          {/* Bekleyen ödemeler */}
+          {usersList.filter(u=>u.pendingRequest).length > 0 && (
+            <div>
+              <h3 className="font-bold text-white mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"/>
+                Onay Bekleyen Ödemeler ({usersList.filter(u=>u.pendingRequest).length})
+              </h3>
+              <div className="space-y-3">
+                {usersList.filter(u=>u.pendingRequest).map(u=>(
+                  <div key={u.id} className="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center gap-4">
+                    <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${getAvatarColor(u.name)} flex items-center justify-center text-sm font-black text-white shrink-0`}>{String(u.name||"U").charAt(0).toUpperCase()}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-white">{u.name||"Kullanıcı"}</div>
+                      <div className="text-xs text-slate-400">{u.email}</div>
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                        <div className="bg-slate-950 border border-orange-500/30 px-3 py-1 rounded-lg">
+                          <span className="text-[10px] text-slate-500 uppercase font-bold mr-1.5">Shopier Kodu:</span>
+                          <span className="text-orange-400 font-mono font-black tracking-wider">{u.paymentCode||"—"}</span>
+                        </div>
+                        <span className="text-xs font-bold px-2 py-1 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                          Plan: {u.pendingRequest}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={()=>approvePremium(u.id,u.pendingRequest)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition-colors">
+                        ✓ Onayla ({u.pendingRequest})
+                      </button>
+                      <button onClick={()=>revokePremium(u.id)} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-red-400 font-bold rounded-xl text-sm border border-slate-700 transition-colors">
+                        İptal
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tüm kullanıcılar + kodlar */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-white flex items-center gap-2"><Users className="w-4 h-4 text-slate-400"/> Tüm Kullanıcılar & Shopier Kodları</h3>
+              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-full px-3 py-1.5 gap-2">
+                <Search className="w-3.5 h-3.5 text-slate-500"/>
+                <input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="İsim, e-posta veya kod ile ara..." className="bg-transparent outline-none text-xs text-white w-48"/>
+              </div>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-950 text-slate-500 text-[10px] uppercase border-b border-slate-800">
+                      <th className="px-4 py-3">Kullanıcı</th>
+                      <th className="px-4 py-3">Shopier Kodu</th>
+                      <th className="px-4 py-3 text-center">Premium Durumu</th>
+                      <th className="px-4 py-3 text-right">Premium Ver</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/40">
+                    {sortedUsers.map(u=>{
+                      const up=isUserPremium(u);
+                      const rem=getRemainingDays(u.premiumEndDate);
+                      const pend=!!u.pendingRequest;
+                      return(
+                        <tr key={u.id} className={`hover:bg-slate-800/20 transition-colors ${pend?"bg-amber-950/10":""}`}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(u.name)} flex items-center justify-center text-xs font-black text-white shrink-0`}>{String(u.name||"U").charAt(0).toUpperCase()}</div>
+                              <div>
+                                <div className="text-sm font-bold text-white">{u.name||"—"}</div>
+                                <div className="text-[10px] text-slate-500">{u.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <code className="text-sm font-mono font-black text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 rounded-lg tracking-widest">
+                                {u.paymentCode||"—"}
+                              </code>
+                              <button onClick={async()=>{try{await navigator.clipboard.writeText(u.paymentCode||"");alert("Kopyalandı!");}catch{}}} className="p-1 text-slate-600 hover:text-slate-300 transition-colors" title="Kopyala">
+                                <Copy className="w-3.5 h-3.5"/>
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {pend
+                              ?<span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/20 animate-pulse">⏳ {u.pendingRequest} Bekleniyor</span>
+                              :up
+                                ?<span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">✓ Aktif · {rem} gün</span>
+                                :<span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-500">Standart</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {up&&<button onClick={()=>revokePremium(u.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition-colors" title="İptal et"><ShieldAlert className="w-3.5 h-3.5"/></button>}
+                              <button onClick={()=>approvePremium(u.id,"1A")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-300 transition-colors">+1A</button>
+                              <button onClick={()=>approvePremium(u.id,"6A")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-orange-600 hover:text-white text-orange-300 transition-colors">+6A</button>
+                              <button onClick={()=>approvePremium(u.id,"1Y")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-600 hover:text-white text-amber-300 transition-colors">+1Y</button>
+                              {u.role!=="admin"&&!ADMIN_EMAILS.includes(String(u.email).toLowerCase().trim())&&(
+                                <button onClick={()=>deleteUser(u)} className="p-1.5 rounded-lg bg-red-900/40 text-red-400 hover:bg-red-600 hover:text-white border border-red-800/40 transition-colors" title="Kullanıcıyı Sil"><Trash className="w-3.5 h-3.5"/></button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ═══ KULLANICILAR ═══════════════════════════════════════════════════════════ */}
+      {adminTab==="users"&&<div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden"><div className="px-5 py-3.5 border-b border-slate-800 flex justify-between items-center bg-slate-950/40 gap-3"><span className="font-bold text-white text-sm">Kullanıcılar ({usersList.length})</span><div className="flex items-center bg-slate-900 border border-slate-800 rounded-full px-3 py-1.5 gap-2"><Search className="w-3.5 h-3.5 text-slate-500"/><input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Ara..." className="bg-transparent outline-none text-xs text-white w-32 md:w-48"/></div></div><div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="bg-slate-900 text-slate-500 text-[10px] uppercase border-b border-slate-800"><th className="px-5 py-3">Kullanıcı</th><th className="px-5 py-3">Shopier Kodu</th><th className="px-5 py-3 text-center">Seviye</th><th className="px-5 py-3 text-center">Durum</th><th className="px-5 py-3 text-right">İşlem</th></tr></thead><tbody className="divide-y divide-slate-800/40">{sortedUsers.map(u=>{const up=isUserPremium(u);const rem=getRemainingDays(u.premiumEndDate);const pend=!!u.pendingRequest;const lv=getLevel(u.playCount);return<tr key={u.id} className={`hover:bg-slate-800/25 transition-colors ${pend?"bg-amber-950/15":""}`}><td className="px-5 py-3"><div className="flex items-center gap-2"><div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(u.name)} flex items-center justify-center text-xs font-black text-white`}>{String(u.name||"U").charAt(0).toUpperCase()}</div><div><div className="text-sm font-medium text-white">{u.name||"Kullanıcı"}</div><div className="text-[10px] text-slate-500">{u.email}</div></div></div></td><td className="px-5 py-3"><code className="text-xs font-mono font-black text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded">{u.paymentCode||"—"}</code></td><td className="px-5 py-3 text-center"><div className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${lv.bg} ${lv.color}`}>{lv.icon} {lv.name}</div></td><td className="px-5 py-3 text-center"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pend?"bg-amber-500/20 text-amber-400 animate-pulse":up?"bg-emerald-500/20 text-emerald-400":"bg-slate-800 text-slate-500"}`}>{pend?`⏳ ${u.pendingRequest}`:up?`✓ ${rem}g`:"Standart"}</span></td><td className="px-5 py-3 text-right"><div className="flex items-center justify-end gap-1 flex-wrap">{pend?<><button onClick={()=>approvePremium(u.id,u.pendingRequest)} className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">Onayla</button><button onClick={()=>revokePremium(u.id)} className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">İptal</button></>:<>{up&&<button onClick={()=>revokePremium(u.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20" title="İptal"><ShieldAlert className="w-3.5 h-3.5"/></button>}<button onClick={()=>approvePremium(u.id,"1A")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white">+1A</button><button onClick={()=>approvePremium(u.id,"6A")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-orange-900/50 text-orange-300">+6A</button><button onClick={()=>approvePremium(u.id,"1Y")} className="text-[10px] font-bold px-2 py-1.5 rounded-lg bg-amber-900/50 text-amber-300">+1Y</button></>}{u.role!=="admin"&&!ADMIN_EMAILS.includes(String(u.email).toLowerCase().trim())&&<button onClick={()=>deleteUser(u)} className="p-1.5 rounded-lg bg-red-900/40 text-red-400 hover:bg-red-600 hover:text-white border border-red-800/40" title="Sil"><Trash className="w-3.5 h-3.5"/></button>}</div></td></tr>;})} </tbody></table></div></div>}
       {/* Orders */}
       {adminTab==="orders"&&<div className="grid grid-cols-1 lg:grid-cols-2 gap-5">{ordersList.length===0&&<div className="col-span-full bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center text-slate-500 text-sm">Henüz sipariş yok.</div>}{ordersList.map(o=><div key={o.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5"><div className="flex justify-between items-start mb-3"><div><span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${o.status==="Onay Bekliyor"?"bg-amber-500/10 text-amber-400 border-amber-500/20":o.status.includes("Kargo")||o.status.includes("İletildi")?"bg-emerald-500/10 text-emerald-400 border-emerald-500/20":"bg-red-500/10 text-red-400 border-red-500/20"}`}>{o.status}</span><div className="font-bold text-white text-base mt-1.5">{o.productName}</div><div className="text-xs text-amber-500 font-bold">{Number(o.fapCost)} FAP</div></div><span className="text-[10px] text-slate-500">{o.displayDate}</span></div><div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-sm mb-3 space-y-1"><p><span className="text-slate-500">Kullanıcı: </span><span className="text-white">{o.userName}</span></p><p><span className="text-slate-500">E-posta: </span><a href={`mailto:${o.userEmail}`} className="text-blue-400 hover:underline">{o.userEmail}</a></p>{o.productType==="Fiziksel"&&<p className="border-t border-slate-800 pt-1 mt-1"><span className="text-slate-500">Adres: </span><span className="text-slate-300 text-xs">{o.addressDetails}</span></p>}</div>{o.status==="Onay Bekliyor"&&<div className="flex gap-2"><button onClick={()=>handleOrderStatus(o.id,"Kargolandı / İletildi",o.userId,o.fapCost)} className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs">Onayla & İlet</button><button onClick={()=>handleOrderStatus(o.id,"İptal/İade Edildi",o.userId,o.fapCost)} className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-red-400 font-bold rounded-lg border border-slate-700 text-xs">Reddet</button></div>}</div>)}</div>}
       {/* Products */}
